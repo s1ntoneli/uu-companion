@@ -71,6 +71,8 @@ uu伴侣是一款独立的 Mac 麦克风透传工具，**不依赖 UU 远程**�
 
 ## 公共服务器与自部署
 
+**已发布的 Preview 4 是迁移前的历史构建**，App 中可能仍显示 `wss://uu-companion-relay.auv1107.workers.dev`。两者实际接入同一个 Cloudflare Worker；想使用新域名，可在菜单栏选择「发现 / 中继服务器…」并填入 `wss://uu.gokoding.com`。新版 App 会自动将旧官方默认地址迁移到新域名，同时保留自行部署的服务器设置。
+
 免费公开中继（Cloudflare 代理的自有域名）：wss://uu.gokoding.com
 
 健康检查：https://uu.gokoding.com/health

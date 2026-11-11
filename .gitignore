@@ -25,3 +25,6 @@ NativeMic/manualpkg-expanded/
 
 .relay-test-code
 **/__pycache__/
+
+# Generated macOS icon intermediates (the final .icns is versioned)
+Assets/uucompanion.iconset/

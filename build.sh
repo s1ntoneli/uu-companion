@@ -15,10 +15,11 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>com.uu.companion</string>
 <key>CFBundleName</key><string>uu伴侣</string>
 <key>CFBundleDisplayName</key><string>uu伴侣</string>
+<key>CFBundleIconFile</key><string>uucompanion.icns</string>
 <key>CFBundleExecutable</key><string>uu-companion</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.2.0</string>
-<key>CFBundleVersion</key><string>2</string>
+<key>CFBundleVersion</key><string>5</string>
 <key>LSMinimumSystemVersion</key><string>14.2</string>
 <key>LSUIElement</key><true/>
 <key>NSMicrophoneUsageDescription</key><string>uu伴侣在远程 Mac 开始录音时使用本机麦克风，并将声音传送到配对的 Mac。</string>
@@ -44,6 +45,8 @@ if [[ "$UU_DISTRIBUTION_MODE" != "1" ]]; then
     cp NativeMic/build/UUMicNative-0.1.2.pkg "$bundle/Contents/Resources/UUMicNative-0.1.2.pkg"
 fi
 cp INSTALL-MAC.md "$bundle/Contents/Resources/INSTALL-MAC.md"
+# Finder, Dock and macOS permissions display the actual product icon.
+cp Assets/uucompanion.icns "$bundle/Contents/Resources/uucompanion.icns"
 # Bundle the driver inside the same app. Public builds must use a Developer
 # ID-signed driver, built by NativeMic/build.sh before compiling this App.
 if [[ ! -d NativeMic/build/UUMicNative.driver ]]; then

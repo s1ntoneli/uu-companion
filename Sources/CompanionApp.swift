@@ -57,8 +57,21 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             .appendingPathComponent("Library/Logs/uu-companion-cloud.log")
     }
     private let officialRelay = "wss://uu.gokoding.com"
+    private let oldOfficialRelay = "wss://uu-companion-relay.auv1107.workers.dev"
     private let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 
+    // Migrate only our previous default. Never overwrite self-hosted WSS URLs.
+    private func currentRelay(_ address: String) -> String {
+        let clean = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean == oldOfficialRelay || clean == oldOfficialRelay + "/"
+            ? officialRelay : address
+    }
+    private func migrateLegacyRelayPreference() {
+        if let saved = UserDefaults.standard.string(forKey: "uuRelayURL"),
+           currentRelay(saved) != saved {
+            UserDefaults.standard.set(officialRelay, forKey: "uuRelayURL")
+        }
+    }
     private func loadCloudPair() {
         guard let data = try? Data(contentsOf: relayURL),
               let value = try? JSONDecoder().decode(CloudPair.self, from: data),
@@ -68,7 +81,13 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             cloudPair = nil
             return
         }
-        cloudPair = value
+        let server = currentRelay(value.server)
+        let pair = CloudPair(code: value.code, server: server)
+        cloudPair = pair
+        if server != value.server, let updated = try? JSONEncoder().encode(pair) {
+            try? updated.write(to: relayURL, options: .atomic)
+            chmod(relayURL.path, 0o600)
+        }
     }
     private func persistCloudPair(_ pair: CloudPair?) {
         let directory = relayURL.deletingLastPathComponent()
@@ -467,6 +486,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quit)
         item.menu = menu
         loadSettings()
+        migrateLegacyRelayPreference()
         loadCloudPair()
         if settings?.role == "receiver" { pairItem.action = #selector(enterCode) }
         updatePairingMenu()
