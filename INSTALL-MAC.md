@@ -1,15 +1,15 @@
 # uu伴侣 — 一个 App 的安装方式
 
-uu伴侣让一台 Mac 使用另一台 Mac 的麦克风。只需下载一个 uu伴侣 App（Preview 5 已通过 Apple 公证并附加票据；其他版本的状态请查看 GitHub Releases）；无需用户账号、付费订阅，也无需关闭 Gatekeeper 或 SIP。
+uu伴侣让一台 Mac 使用另一台 Mac 的麦克风。只需下载一个 uu伴侣 App（请从 GitHub Releases 下载，并确认对应版本的 Apple 公证状态）；无需用户账号、付费订阅，也无需关闭 Gatekeeper 或 SIP。
 
 ## 用户操作
 
 1. 从 https://github.com/s1ntoneli/uu-companion/releases 下载最新版 One-App ZIP，解压，把 uu伴侣.app 拖入“应用程序”。
-2. 启动 uu伴侣，首次选择「提供本机麦克风」或「使用远程麦克风」。
+2. 启动 uu伴侣，首次选择「提供麦克风」或「使用远程麦克风」。
 3. 发送端只需正常授权麦克风，不需要任何驱动。
 4. 接收端首次启动时点击「安装 Native Mic」，在 Apple 标准管理员对话框中授权。驱动已包含在 App 内，无需另找安装包、打开终端或手动拖文件到系统文件夹。
-5. 安装成功后保存工作并正常重启接收端，macOS 的 Core Audio 才会加载新插件。再次打开 uu伴侣即可使用，无需重复安装。
-6. 发送端点击「生成新配对码…」，接收端点击「输入配对码…」。在 ChatGPT 等程序中选择 uu伴侣 Native Mic 作为音频输入设备。
+5. 安装成功后保存工作并正常重启接收端，macOS 的 Core Audio 才会加载新插件。**重启前即使输入配对码、另一台 Mac 显示在线，也无法正常传声。**
+6. 发送端复制 16 位配对码，接收端点击「输入配对码…」。确认菜单中的三个阶段「本机音频已就绪」「另一台 Mac 已在线」「音频已就绪」，再在 ChatGPT 等程序中选择 uu伴侣 Native Mic 开始录音。
 
 ## 安装过程与权限
 
@@ -29,4 +29,4 @@ uu伴侣让一台 Mac 使用另一台 Mac 的麦克风。只需下载一个 uu�
 
 开发者可运行 ./build.sh 编译源码；分发版使用 UU_DISTRIBUTION_MODE=1 和 Developer ID 签名。其他信息见 README.md 和 Signing/README.md。
 
-公网模式内部音频监听使用 127.0.0.1:51555，与 UU Remote 旧版使用的 50555 端口隔离，用户无需手动配置端口。
+公网模式自动为内部音频选择独立的 127.0.0.1 本机端口，避免与 UU Remote 或其他实例冲突，用户无需手动配置端口。

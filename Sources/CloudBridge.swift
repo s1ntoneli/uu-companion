@@ -6,8 +6,8 @@ import Security
 setvbuf(stdout, nil, _IOLBF, 0)
 
 // A thin end-to-end encrypted WSS bridge for the existing tested LAN engine.
-// Both Macs establish outbound WSS; receiver listens only on 127.0.0.1:50556;
-// sender dials only the dedicated local 127.0.0.1:51555 microphone service.
+// Both Macs establish outbound WSS; receiver listens only on localhost;
+// sender dials a private per-launch loopback port chosen by the app.
 // No cloud account, plaintext audio on the server, or public TCP port needed.
 let parentPID = getppid()
 let parentWatch = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
@@ -50,7 +50,9 @@ let room = hex(codeHash("uu.room.v1:", code))
 let sendKey = SymmetricKey(data: codeHash(role == "sender" ? "uu.sender.v1:" : "uu.receiver.v1:", code))
 let receiveKey = SymmetricKey(data: codeHash(role == "sender" ? "uu.receiver.v1:" : "uu.sender.v1:", code))
 let otherRole = role == "sender" ? "receiver" : "sender"
-let tcpPort: UInt16 = role == "sender" ? 51555 : 50556
+// The main app assigns a fresh localhost port on launch to avoid collisions.
+let tcpPort: UInt16 = environment["UU_LOCAL_AUDIO_PORT"].flatMap(UInt16.init)
+    ?? (role == "sender" ? 51555 : 50556)
 
 final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegate {
     let q = DispatchQueue(label: "uu.cloud.bridge")
@@ -69,9 +71,31 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
     private var sending = false
     private var reconnectAfter = 2.0
     private var lastTraffic: Date?
+    private var listening = false
+    private var lastError = ""
+    private let stateURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/uu伴侣/bridge-state.json")
+
+    // Process-scoped status; contains NO pairing code, secret, room ID or audio.
+    private func publishState() {
+        let info: [String: Any] = [
+            "pid": ProcessInfo.processInfo.processIdentifier,
+            "role": role,
+            "updatedAt": Date().timeIntervalSince1970,
+            "relayConnected": opened,
+            "peerOnline": peerOnline,
+            "localConnected": local != nil && !waitingForAuth,
+            "listening": listening,
+            "error": lastError
+        ]
+        guard let bytes = try? JSONSerialization.data(withJSONObject: info) else { return }
+        try? bytes.write(to: stateURL, options: .atomic)
+        chmod(stateURL.path, 0o600)
+    }
 
     func start() {
         session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
+        publishState()
         if role == "receiver" { startListener() }
         connectWebSocket()
         let watchdog = DispatchSource.makeTimerSource(queue: q)
@@ -80,6 +104,7 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
             guard let self else { return }
             // Keep hibernating WebSocket alive over NAT. The relay responds pong.
             if self.opened { self.webSocket?.send(.string("ping")) { _ in } }
+            self.publishState()
         }
         watchdog.resume()
         _watchdog = watchdog
@@ -133,6 +158,7 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
                     switch state {
                     case .ready:
                         log("local microphone consumer connected")
+                        self.publishState()
                         self.receiveLocal(c)
                     case .failed, .cancelled:
                         self.closeLocal()
@@ -143,13 +169,25 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
             }
             listener.stateUpdateHandler = { state in
                 switch state {
-                case .ready: log("local receiver listening on 127.0.0.1:\(tcpPort)")
-                case .failed(let e): log("local listen failed: \(e)")
+                case .ready:
+                    self.listening = true
+                    log("local receiver listening on 127.0.0.1:\(tcpPort)")
+                    self.publishState()
+                case .failed(let e):
+                    self.listening = false
+                    self.lastError = "本机音频端口不可用"
+                    log("local listen failed: \(e)")
+                    self.publishState()
                 default: break
                 }
             }
             listener.start(queue: q)
-        } catch { log("failed to bind local TCP bridge: \(error)"); exit(3) }
+        } catch {
+            lastError = "本机音频服务启动失败"
+            publishState()
+            log("failed to bind local TCP bridge: \(error)")
+            exit(3)
+        }
     }
 
     private func connectWebSocket() {
@@ -159,6 +197,7 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
         peerOnline = false
         sending = false
         outgoing.removeAll()
+        publishState()
         guard var components = URLComponents(url: relayURL, resolvingAgainstBaseURL: false) else { exit(2) }
         let path = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
         components.path = path + "/v1/rooms/" + room
@@ -187,6 +226,7 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
                             let changed = online != self.peerOnline
                             self.peerOnline = online
                             if changed { log(online ? "paired peer online" : "paired peer offline") }
+                            self.publishState()
                             if !online && changed { self.closeLocal() }
                             else if online && role == "sender" { self.startLocalSender() }
                         }
@@ -269,6 +309,7 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
             case .ready:
                 local.send(content: Data(("AUTH " + authenticationSecret + "\n").utf8), completion: .idempotent)
                 log("connected to local mic provider")
+                self.publishState()
                 for c in self.pendingCommands { local.send(content: c, completion: .idempotent) }
                 self.pendingCommands.removeAll()
                 self.receiveLocal(local)
@@ -291,6 +332,7 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
                         guard line == "AUTH " + authenticationSecret else { self.closeLocal(); return }
                         let rest = self.authBuffer.suffix(from: self.authBuffer.index(after: newline))
                         self.waitingForAuth = false
+                        self.publishState()
                         if !rest.isEmpty { self.writeEncrypted(Data(rest)) }
                         self.authBuffer.removeAll()
                     }
@@ -317,6 +359,7 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
         waitingForAuth = false
         audioBatch.removeAll(keepingCapacity: true)
         pendingCommands.removeAll()
+        publishState()
     }
     private func reconnectIfCurrent(_ gen: Int) {
         guard generation == gen else { return }
@@ -329,6 +372,7 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
         outgoing.removeAll()
         closeLocal()
         if wasOnline { log("relay disconnected; microphone safe idle") }
+        publishState()
         let delay = reconnectAfter
         reconnectAfter = min(12, reconnectAfter * 1.8)
         q.asyncAfter(deadline: .now() + delay) { [weak self] in
@@ -341,8 +385,10 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
         q.async {
             guard self.webSocket === webSocketTask else { return }
             self.opened = true
+            self.lastError = ""
             self.reconnectAfter = 2
             log("relay WSS connected (end-to-end encrypted)")
+            self.publishState()
             self.sendNext()
         }
     }
