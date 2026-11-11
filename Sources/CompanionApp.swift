@@ -278,7 +278,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         let nativeAvailable = nativeDriverAvailable
         let preferred = role == "receiver" ? "uu伴侣 Native Mic" : nil
         let newSettings = CompanionSettings(role: role, host: settings?.host,
-                                            port: 50555, token: token,
+                                            port: 51555, token: token,
                                             virtualDeviceName: preferred)
         let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
             "Library/Application Support/uu伴侣/config.json")
@@ -570,7 +570,10 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             }
             p.arguments = args
         } else {
-            p.arguments = ["--port", String(settings.port ?? 50555)]
+            // Public relay uses a dedicated localhost-only port to avoid
+            // colliding with UU Remote's 50555 listener on the VPN interface.
+            let senderPort = cloudPair == nil ? (settings.port ?? 51555) : 51555
+            p.arguments = ["--port", String(senderPort)]
             if cloudPair != nil { p.arguments?.append("--loopback-only") }
         }
         var environment = ProcessInfo.processInfo.environment

@@ -28,3 +28,5 @@ uu伴侣让一台 Mac 使用另一台 Mac 的麦克风。只下载一个经 Appl
 - ZIP 的公证票据在首次运行时由 Gatekeeper 通过互联网查询 Apple。无需关闭 Gatekeeper 或 SIP。
 
 开发者可运行 ./build.sh 编译源码；分发版使用 UU_DISTRIBUTION_MODE=1 和 Developer ID 签名。其他信息见 README.md 和 Signing/README.md。
+
+公网模式内部音频监听使用 127.0.0.1:51555，与 UU Remote 旧版使用的 50555 端口隔离，用户无需手动配置端口。

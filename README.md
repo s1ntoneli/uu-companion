@@ -28,7 +28,7 @@ Free and open-source accountless microphone sharing between Macs.
 ## 传输架构
 
 发送端 MagicBook（实体麦克风）：
- - uu-sender 在本机 TCP 50555 端口服务
+ - uu-sender 在公网模式下仅监听 127.0.0.1:51555（与 UU Remote 的 50555 端口隔离）；历史局域网配置可继续使用原端口
  - uu-cloud-bridge 将本机流通过 WSS 加密发送到 Relay
 
 公开开源 Relay：只协调发现和转发加密数据，不保存原始配对码、不解密录音。

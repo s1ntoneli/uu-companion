@@ -7,7 +7,7 @@ setvbuf(stdout, nil, _IOLBF, 0)
 
 // A thin end-to-end encrypted WSS bridge for the existing tested LAN engine.
 // Both Macs establish outbound WSS; receiver listens only on 127.0.0.1:50556;
-// sender dials only the existing local 127.0.0.1:50555 microphone service.
+// sender dials only the dedicated local 127.0.0.1:51555 microphone service.
 // No cloud account, plaintext audio on the server, or public TCP port needed.
 let parentPID = getppid()
 let parentWatch = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
@@ -50,7 +50,7 @@ let room = hex(codeHash("uu.room.v1:", code))
 let sendKey = SymmetricKey(data: codeHash(role == "sender" ? "uu.sender.v1:" : "uu.receiver.v1:", code))
 let receiveKey = SymmetricKey(data: codeHash(role == "sender" ? "uu.receiver.v1:" : "uu.sender.v1:", code))
 let otherRole = role == "sender" ? "receiver" : "sender"
-let tcpPort: UInt16 = role == "sender" ? 50555 : 50556
+let tcpPort: UInt16 = role == "sender" ? 51555 : 50556
 
 final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegate {
     let q = DispatchQueue(label: "uu.cloud.bridge")
