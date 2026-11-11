@@ -108,7 +108,19 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
     }
     @objc private func installDriver() {
         guard let pkg = Bundle.main.url(forResource: "UUMicNative-0.1.2", withExtension: "pkg") else {
-            status.title = "安装包缺失；请从 GitHub 重新下载完整版本"
+            // Public notarized DMG ships the signed driver beside the app, not
+            // an unsigned .pkg nested inside the app bundle.
+            let guide = NSAlert()
+            guide.messageText = "安装 uu伴侣 Native Mic"
+            guide.informativeText = "在下载的 uu伴侣 DMG 中，将 UUMicNative.driver 拖入「音频插件位置」文件夹（/Library/Audio/Plug-Ins/HAL）。按 macOS 提示输入管理员密码，随后重启 Mac，再打开 uu伴侣。无需关闭任何系统安全保护。"
+            guide.addButton(withTitle: "查看安装步骤")
+            guide.addButton(withTitle: "稍后安装")
+            NSApp.activate(ignoringOtherApps: true)
+            if guide.runModal() == .alertFirstButtonReturn,
+               let url = URL(string: "https://github.com/s1ntoneli/uu-companion/blob/main/INSTALL-MAC.md") {
+                NSWorkspace.shared.open(url)
+            }
+            status.title = "请从 DMG 安装 Native Mic 并重启 Mac"
             return
         }
         let alert = NSAlert()
@@ -143,8 +155,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         }
         let token = settings?.token ?? random.map { String(format: "%02x", $0) }.joined()
         let nativeAvailable = nativeDriverAvailable
-        let preferred = role == "receiver" ?
-            (nativeAvailable ? "uu伴侣 Native Mic" : "uu伴侣 Mic") : nil
+        let preferred = role == "receiver" ? "uu伴侣 Native Mic" : nil
         let newSettings = CompanionSettings(role: role, host: settings?.host,
                                             port: 50555, token: token,
                                             virtualDeviceName: preferred)

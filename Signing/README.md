@@ -22,3 +22,9 @@ For notarization, the full distribution must be signed appropriately, including 
 Submit the final archive or installer to Apple's notary service with an authorized notarytool keychain profile, wait for Accepted, staple, and verify using spctl and stapler validate before a public binary release. Apple credentials stay in the local Keychain. Never store app-specific passwords, App Store Connect private keys, credentials or signing identities with private keys in Git.
 
 This repository DOES NOT claim the preview is Apple notarized until the actual submission succeeds. Run a separate first-install/permissions test on a clean Mac before a production release.
+
+## Public DMG without an Installer certificate
+
+Developer ID Installer is distinct from Developer ID Application. Apple rejects an unsigned .pkg nested inside App Resources, reporting “The binary is not signed”. The public alternative is a signed and notarized DMG with two independently signed components: uu伴侣.app built with UU_DISTRIBUTION_MODE=1, and UUMicNative.driver built with UU_DRIVER_SIGN_IDENTITY, plus INSTALL-MAC.md and Finder shortcuts to /Applications and /Library/Audio/Plug-Ins/HAL.
+
+Users copy the driver through Finder with normal administrator authorization, then restart macOS. Never disable Gatekeeper or SIP. A future one-click flat installer must be signed by a distinct Developer ID Installer certificate and notarized.
