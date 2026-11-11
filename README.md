@@ -4,7 +4,9 @@
 
 Use your local microphone on the Mac you're controlling through UU Remote.
 
-免费、MIT 开源，无需账号或订阅。通过标准虚拟麦克风，可直接在远程设备上的 ChatGPT、会议软件及录音应用中使用。
+uu伴侣是一款独立的 Mac 麦克风透传工具，**不依赖 UU 远程**。无论你使用 UU 远程、其他远程控制软件，还是只想让两台 Mac 共享麦克风，都可以使用。连接后，远程 Mac 可以像使用本机麦克风一样进行 ChatGPT 语音输入、开会和录音。
+
+免费、MIT 开源，无需账号或订阅。
 
 ## 主要功能
 
