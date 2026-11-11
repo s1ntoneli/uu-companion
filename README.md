@@ -86,6 +86,8 @@ Free and open-source accountless microphone sharing between Macs.
 - 自有驱动的本机注入接口尚未完成强进程身份校验，请仅在可信 Mac 上使用。
 - 面向公众的开发者签名、公证、全自动安装、全面长时间稳定性测试待发布验收。当前源码可由开发者本地构建，不应绕过 Gatekeeper 安全保护。
 
+发行签名/公证的严格步骤与所需证书见 [Signing/README.md](Signing/README.md)。截至本次预览，正式的 Apple 公证安装包**尚未发布**；不推荐用户绕过 Gatekeeper 安装未经验证的应用。
+
 ## 验收结果
 
 - 局域网 Native Mic 实际录制 398,400 帧，其中 364,273 个非零采样。

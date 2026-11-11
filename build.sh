@@ -48,7 +48,11 @@ signIdentity="$UU_COMPANION_SIGN_IDENTITY"
 if [[ -z "$signIdentity" || "$signIdentity" == "-" ]]; then
     codesign --force --deep --sign - "$bundle"
 else
-    codesign --force --deep --options runtime --timestamp --sign "$signIdentity" "$bundle"
+    # Hardened-runtime microphone helpers need explicit audio permission.
+    codesign --force --options runtime --timestamp --entitlements Signing/Microphone.entitlements --sign "$signIdentity" "$bundle/Contents/MacOS/uu-sender"
+    codesign --force --options runtime --timestamp --sign "$signIdentity" "$bundle/Contents/MacOS/uu-receiver"
+    codesign --force --options runtime --timestamp --sign "$signIdentity" "$bundle/Contents/MacOS/uu-cloud-bridge"
+    codesign --force --options runtime --timestamp --entitlements Signing/Microphone.entitlements --sign "$signIdentity" "$bundle"
 fi
 codesign --verify --deep --strict "$bundle"
 echo "Built: $bundle"
