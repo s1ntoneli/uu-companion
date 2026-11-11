@@ -46,7 +46,7 @@ Free and open-source accountless microphone sharing between Macs.
 
 首先编译：./build.sh
 
-接收端安装虚拟麦克风：正常构建的 App 已经内置 Native Mic 0.1.2 驱动测试安装包，在菜单栏点击「安装 / 修复 Native Mic 驱动…」即可通过系统安装器完成管理员确认。开发者也可运行 NativeMic/package.sh 单独生成驱动包。驱动源码及注意事项见 NativeMic/README.md。
+接收端安装虚拟麦克风：公开发行的 Apple 公证 ZIP 在 App 旁边附有独立签名的 UUMicNative.driver，请先通过 Finder 复制到系统 /Library/Audio/Plug-Ins/HAL（正常管理员授权），再重启接收端。菜单栏「安装 / 修复 Native Mic 驱动…」会引导操作；开发者仍可通过 NativeMic/package.sh 生成自己的本地测试包。详见 [INSTALL-MAC.md](INSTALL-MAC.md)。
 
 **普通用户无需输入命令行或提供任何旧配对密钥。** App 首次启动会自动生成本机私有的 TCP 认证密钥。开发者如需手动安装、局域网调试，可以使用 install.sh。
 
@@ -84,9 +84,9 @@ Free and open-source accountless microphone sharing between Macs.
 - 当前公网模式不能穿透之后的 ICE/P2P；音频由 Relay 转发，因此中继配额会影响使用时长。
 - **macOS 27 Core Audio 兼容性**：部分系统可能在启动实体麦克风时阻塞（AVAudioEngine、AudioQueue 均可受影响）。uu伴侣会在等待超过 8 秒后明确报告麦克风启动超时、保持配对网络可用，并在录音停止时撤销迟到启动请求；但无法替代系统修复。必要时请在保存工作后正常重启发送端 Mac。当前 MagicBook 在最后一次测试仍受到此系统问题影响。
 - 自有驱动的本机注入接口尚未完成强进程身份校验，请仅在可信 Mac 上使用。
-- 面向公众的开发者签名、公证、全自动安装、全面长时间稳定性测试待发布验收。当前源码可由开发者本地构建，不应绕过 Gatekeeper 安全保护。
+- 面向公众的 Preview 3 ZIP 已完成 Developer ID 签名和 Apple 公证，解压后经 Gatekeeper 在线检查验证。Native Mic 驱动需要 Finder 手动复制并重启；尚未完成所有 macOS 版本的干净机器首装、长期稳定性验收。
 
-发行签名/公证的严格步骤与所需证书见 [Signing/README.md](Signing/README.md)。截至本次预览，正式的 Apple 公证安装包**尚未发布**；不推荐用户绕过 Gatekeeper 安装未经验证的应用。
+发行签名/公证的严格步骤见 [Signing/README.md](Signing/README.md)。可下载安装的 Preview 3 是 Apple 已公证的 ZIP，包含 App、独立签名的 Native Mic 驱动和安装说明，但由于未能在远程沙盒中附加离线票据，首次运行时须联网让 Gatekeeper 查询 Apple。
 
 ## 验收结果
 
@@ -101,7 +101,7 @@ Free and open-source accountless microphone sharing between Macs.
 
 在修复首次 TCC 麦克风权限申请、云桥接本机服务重试和发送端音频图预初始化后，又完成连续三轮公网音频验收：每轮 398400 帧，分别 259716、327266、327692 个非零采样；开麦耗时 0.62 秒、0.60 秒、0.82 秒。第三轮是在 MagicBook uu伴侣完全退出并重新启动后的首次录音。三轮均按需开麦、按需关麦。仍需在干净 Mac 上完成首次安装与正常开机启动等测试。
 
-正式公证安装包尚不可用，本次只提供开源源码预览。不要以绕过 Gatekeeper 的方式安装来历不明的包。
+Preview 3 开始提供经过 Apple 官方公证的 ZIP（非一键安装）。请依照 [安装说明](INSTALL-MAC.md) 拷贝 Native Mic 驱动，不要绕过 Gatekeeper 或 SIP。
 
 ## License
 

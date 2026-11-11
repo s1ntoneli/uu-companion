@@ -23,8 +23,15 @@ Submit the final archive or installer to Apple's notary service with an authoriz
 
 This repository DOES NOT claim the preview is Apple notarized until the actual submission succeeds. Run a separate first-install/permissions test on a clean Mac before a production release.
 
-## Public DMG without an Installer certificate
+## Public notarized ZIP without an Installer certificate
 
-Developer ID Installer is distinct from Developer ID Application. Apple rejects an unsigned .pkg nested inside App Resources, reporting “The binary is not signed”. The public alternative is a signed and notarized DMG with two independently signed components: uu伴侣.app built with UU_DISTRIBUTION_MODE=1, and UUMicNative.driver built with UU_DRIVER_SIGN_IDENTITY, plus INSTALL-MAC.md and Finder shortcuts to /Applications and /Library/Audio/Plug-Ins/HAL.
+Developer ID Installer is distinct from Developer ID Application. Apple rejects an unsigned .pkg nested inside App Resources, reporting “The binary is not signed”. The public alternative is an Apple-notarized ZIP with two independently Developer-ID-signed components: uu伴侣.app built with UU_DISTRIBUTION_MODE=1, and UUMicNative.driver built with UU_DRIVER_SIGN_IDENTITY, plus INSTALL-MAC.md and Finder shortcuts to /Applications and /Library/Audio/Plug-Ins/HAL.
 
 Users copy the driver through Finder with normal administrator authorization, then restart macOS. Never disable Gatekeeper or SIP. A future one-click flat installer must be signed by a distinct Developer ID Installer certificate and notarized.
+
+
+Apple notarization returned Accepted for Preview 3 with the App and separate signed driver without an unsigned .pkg. Gatekeeper on a second Mac accepted the App as Notarized Developer ID. ZIP files cannot be stapled; stapler also could not write its ticket under this remote execution sandbox. First run therefore requires online notarization verification. See INSTALL-MAC.md.
+
+### Reproducible signed ZIP
+
+The source repository includes scripts/package-notarized-zip.sh to build the signed App and signed Native Mic driver into one archive (no unsigned nested pkg), and scripts/notarize-zip.sh to submit the exact archive and require an Accepted status. These scripts read signing identity names and Apple API credential paths from the operator environment; they never commit or print private keys. For notarization, provide NOTARYTOOL_PROFILE or ASC_KEY_PATH, ASC_KEY_ID, ASC_ISSUER_ID. The public ZIP contains both Finder shortcuts, a setup guide, and native binaries.

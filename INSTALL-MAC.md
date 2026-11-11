@@ -4,14 +4,14 @@ uu伴侣包含菜单栏 App，以及仅在接收端需要的 Native Mic 虚拟�
 
 ## 发送端与接收端
 
-1. 从 https://github.com/s1ntoneli/uu-companion/releases 下载经 Apple 公证的 DMG。没有提供公证 DMG 时，仅支持开发者自行从源码构建测试。
-2. 打开 DMG，将 uu伴侣.app 拖入 Applications（应用程序）快捷方式。
+1. 从 https://github.com/s1ntoneli/uu-companion/releases 下载经 Apple 公证的 ZIP（Preview 3 或之后）。请确认下载地址来自此 GitHub 项目。
+2. 解压 ZIP，将里面的 uu伴侣.app 拖入 Applications（应用程序）快捷方式。
 3. 从「应用程序」启动 uu伴侣，选择「提供本机麦克风」或「使用远程麦克风」。
 4. 发送端按 macOS 提示授予麦克风权限，点击「生成新配对码…」。
 
 ## 接收端额外安装 Native Mic
 
-1. 在 DMG 中，将 UUMicNative.driver 拖入「音频插件位置」快捷方式。它指向系统目录 /Library/Audio/Plug-Ins/HAL。
+1. 在 ZIP 解压文件夹中，将 UUMicNative.driver 拖入「音频插件位置」快捷方式。它指向系统目录 /Library/Audio/Plug-Ins/HAL。
 2. 按 Finder 的正常系统提示授予管理员权限。不要关闭 Gatekeeper 或 SIP，也不要双击“打开”驱动。
 3. 保存工作并正常重新启动接收端 Mac，让 Core Audio 加载新插件。
 4. 在「系统设置 → 声音 → 输入」确认能看到 uu伴侣 Native Mic。
@@ -28,5 +28,7 @@ uu伴侣包含菜单栏 App，以及仅在接收端需要的 Native Mic 虚拟�
 - 如果未检测到 Native Mic，检查驱动路径和签名，然后正常重启接收端。
 - 如果发送端已配对但无法录音，检查「系统设置 → 隐私与安全性 → 麦克风」，必要时正常重启发送端使系统音频服务恢复。
 - 本地开发环境可使用 ./build.sh 与 ./NativeMic/package.sh 构建自己的测试包；本地未签名测试 .pkg 不等于公开分发安装包。
+
+ZIP 可以经过 Apple 公证，但不能给 ZIP 本身附加离线公证票据。首次启动前请保持联网，让 Gatekeeper 正常向 Apple 检查公证状态。无需关闭任何系统安全保护。
 
 更多信息见 README.md 和 Signing/README.md。
