@@ -472,6 +472,13 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         updatePairingMenu()
         if settings == nil {
             DispatchQueue.main.async { [weak self] in self?.selectRole() }
+        } else if CommandLine.arguments.contains("--acceptance-install-driver") &&
+                  settings?.role == "receiver" {
+            // Internal E2E hook: exercise the exact menu's installer function,
+            // including the normal macOS administrator permission prompt.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.installDriver()
+            }
         }
         // Register our single menu-bar app as a login item. No separate
         // legacy LaunchAgent is necessary for future installs.
