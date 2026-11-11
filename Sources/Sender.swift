@@ -62,7 +62,16 @@ func tcpParameters() -> NWParameters {
 
 final class Sender {
     private let queue = DispatchQueue(label: "micbridge.sender")
-    private var engine: AVAudioEngine?
+    // Core Audio / AVAudioEngine can synchronously block in HAL on macOS 27.
+    // NEVER initialize or stop the microphone on the network/control queue.
+    private let captureQueue = DispatchQueue(label: "uu.capture", qos: .userInitiated)
+    private var engine: AVAudioEngine? // captureQueue only
+    private var captureGeneration = 0 // network queue only
+    private var microphoneStarting = false // network queue only
+    private var microphoneStartTime: Date? // network queue only
+    private var microphoneRate: Double? // network queue only
+    private var microphoneStallLogged = false // network queue only
+    private var lastCaptureFailure: Date? // network queue only
     private var clients: [ObjectIdentifier: NWConnection] = [:]
     private var active: Set<ObjectIdentifier> = []
     private var lastHeartbeat: [ObjectIdentifier: Date] = [:]
@@ -103,7 +112,15 @@ final class Sender {
                     self.lastHeartbeat[id] = nil
                 }
             }
-            if self.active.isEmpty && self.engine != nil { self.stopMic() }
+            if self.active.isEmpty && (self.microphoneRate != nil || self.microphoneStarting) {
+                self.stopMic()
+            }
+            if self.microphoneStarting, !self.microphoneStallLogged,
+               let begun = self.microphoneStartTime,
+               now.timeIntervalSince(begun) > 8 {
+                self.microphoneStallLogged = true
+                log("microphone startup stalled in macOS Core Audio; control connection remains responsive")
+            }
         }
         watchdog.resume()
         heartbeatTimer = watchdog
@@ -172,8 +189,12 @@ final class Sender {
         if on { active.insert(id); lastHeartbeat[id] = Date() }
         else { active.remove(id); lastHeartbeat[id] = nil }
         if on {
-            if !wasOn { startMic() }
-            if let engine { send(header(rate: engine.inputNode.outputFormat(forBus: 0).sampleRate), to: conn) }
+            if let rate = microphoneRate { send(header(rate: rate), to: conn) }
+            else if !microphoneStarting &&
+                    (lastCaptureFailure == nil ||
+                     Date().timeIntervalSince(lastCaptureFailure!) > 10) {
+                startMic()
+            }
         } else if wasOn && active.isEmpty {
             stopMic()
         }
@@ -199,51 +220,117 @@ final class Sender {
         conn.send(content: data, completion: .idempotent)
     }
 
-    private func startMic() {
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0 else { log("no microphone available"); return }
-
-        let sink = AVAudioSinkNode { [weak self] _, frames, abl -> OSStatus in
-            guard let self else { return noErr }
-            let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: abl))
-            guard let ch0 = buffers.first?.mData?.assumingMemoryBound(to: Float.self) else { return noErr }
-            let n = Int(frames)
-            var data = Data(count: 5 + n * 2)
-            data.withUnsafeMutableBytes { raw in
-                raw[0] = UInt8(ascii: "A")
-                raw.storeBytes(of: UInt32(n * 2).littleEndian, toByteOffset: 1, as: UInt32.self)
-                for i in 0..<n {
-                    let s = max(-1, min(1, ch0[i]))
-                    raw.storeBytes(of: Int16(s * 32767).littleEndian, toByteOffset: 5 + i * 2, as: Int16.self)
-                }
-            }
-            self.queue.async {
-                for id in self.active { if let c = self.clients[id] { self.send(data, to: c) } }
-            }
-            return noErr
+    private func captureFailure(_ detail: String, generation: Int) {
+        queue.async {
+            guard self.captureGeneration == generation else { return }
+            self.microphoneStarting = false
+            self.microphoneStartTime = nil
+            self.lastCaptureFailure = Date()
+            log(detail)
         }
-        engine.attach(sink)
-        engine.connect(input, to: sink, format: format)
-        do {
-            try engine.start()
-            self.engine = engine
-            activity = ProcessInfo.processInfo.beginActivity(
-                options: [.userInitiated, .idleSystemSleepDisabled, .latencyCritical],
-                reason: "Streaming microphone to Mac mini")
-            log("microphone ON (\(Int(format.sampleRate)) Hz)")
-        } catch {
-            log("failed to start microphone: \(error)")
+    }
+
+    private func startMic() {
+        guard !microphoneStarting && microphoneRate == nil else { return }
+        captureGeneration += 1
+        let generation = captureGeneration
+        microphoneStarting = true
+        microphoneStartTime = Date()
+        microphoneStallLogged = false
+        log("microphone initialization requested")
+        captureQueue.async { [weak self] in
+            guard let self else { return }
+            // Potentially blocking calls below live on the capture queue.
+            let newEngine = AVAudioEngine()
+            let input = newEngine.inputNode
+            let format = input.outputFormat(forBus: 0)
+            guard format.sampleRate > 0 else {
+                self.captureFailure("no physical microphone available", generation: generation)
+                return
+            }
+
+            let sink = AVAudioSinkNode { [weak self] _, frames, abl -> OSStatus in
+                guard let self else { return noErr }
+                let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: abl))
+                guard let ch0 = buffers.first?.mData?.assumingMemoryBound(to: Float.self) else { return noErr }
+                let n = Int(frames)
+                var audio = Data(count: 5 + n * 2)
+                audio.withUnsafeMutableBytes { raw in
+                    raw[0] = UInt8(ascii: "A")
+                    raw.storeBytes(of: UInt32(n * 2).littleEndian, toByteOffset: 1, as: UInt32.self)
+                    for i in 0..<n {
+                        let sample = max(-1, min(1, ch0[i]))
+                        raw.storeBytes(of: Int16(sample * 32767).littleEndian,
+                                       toByteOffset: 5 + i * 2, as: Int16.self)
+                    }
+                }
+                self.queue.async {
+                    guard self.captureGeneration == generation else { return }
+                    for id in self.active {
+                        if let connection = self.clients[id] {
+                            self.send(audio, to: connection)
+                        }
+                    }
+                }
+                return noErr
+            }
+            newEngine.attach(sink)
+            newEngine.connect(input, to: sink, format: format)
+            // If the user already stopped recording while HAL initialization
+            // blocked, do not start the microphone when the OS finally returns.
+            let stillWanted = self.queue.sync {
+                self.captureGeneration == generation && !self.active.isEmpty
+            }
+            guard stillWanted else { return }
+            do {
+                try newEngine.start()
+                self.engine = newEngine
+                self.activity = ProcessInfo.processInfo.beginActivity(
+                    options: [.userInitiated, .idleSystemSleepDisabled, .latencyCritical],
+                    reason: "Sharing this Mac microphone with a paired Mac")
+                self.queue.async {
+                    guard self.captureGeneration == generation && !self.active.isEmpty else {
+                        self.captureQueue.async { self.stopEngineOnCaptureQueue() }
+                        return
+                    }
+                    self.microphoneRate = format.sampleRate
+                    self.microphoneStarting = false
+                    self.microphoneStartTime = nil
+                    self.lastCaptureFailure = nil
+                    for id in self.active {
+                        if let connection = self.clients[id] {
+                            self.send(self.header(rate: format.sampleRate), to: connection)
+                        }
+                    }
+                    log("microphone ON (\(Int(format.sampleRate)) Hz)")
+                }
+            } catch {
+                self.captureFailure("failed to start microphone: \(error)", generation: generation)
+            }
+        }
+    }
+
+    private func stopEngineOnCaptureQueue() {
+        if let engine { engine.stop(); self.engine = nil }
+        if let a = activity {
+            ProcessInfo.processInfo.endActivity(a)
+            activity = nil
         }
     }
 
     private func stopMic() {
-        engine?.stop()
-        engine = nil
-        if let a = activity { ProcessInfo.processInfo.endActivity(a); activity = nil }
+        // Cancel any blocked/in-flight startup before queuing the stop.
+        captureGeneration += 1
+        microphoneStarting = false
+        microphoneStartTime = nil
+        microphoneRate = nil
+        microphoneStallLogged = false
+        captureQueue.async { [weak self] in
+            self?.stopEngineOnCaptureQueue()
+        }
         log("microphone OFF")
     }
+
 }
 
 AVCaptureDevice.requestAccess(for: .audio) { granted in

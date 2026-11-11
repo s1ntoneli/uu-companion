@@ -393,6 +393,7 @@ final class Receiver {
     private var lastDiagnostic: Date?
     private var lastKeepaliveSent: Date?
     private var requestedAt: Date?
+    private var micStartTimeoutLogged = false
 
     init(device: AudioDeviceID) { self.device = device }
 
@@ -429,6 +430,11 @@ final class Receiver {
     private var _timer: DispatchSourceTimer?
 
     private func tick() {
+        if micRequested && ready, !micStartTimeoutLogged,
+           let requestedAt, Date().timeIntervalSince(requestedAt) > 8 {
+            micStartTimeoutLogged = true
+            log("remote microphone startup timed out (no audio header after 8s)")
+        }
         if micRequested && ready &&
            (lastKeepaliveSent == nil || Date().timeIntervalSince(lastKeepaliveSent!) >= 2) {
             command("K")
@@ -454,6 +460,7 @@ final class Receiver {
                 command("S")
                 micRequested = true
                 requestedAt = Date()
+                micStartTimeoutLogged = false
             }
         } else if micRequested {
             // Short grace period so brief pauses between recordings don't bounce the mic.
@@ -462,6 +469,8 @@ final class Receiver {
                 log("no app is recording any more — turning the MacBook mic off")
                 command("P")
                 micRequested = false
+                requestedAt = nil
+                micStartTimeoutLogged = false
                 idleSince = nil
             }
         }
@@ -530,6 +539,8 @@ final class Receiver {
         conn = nil
         ready = false
         micRequested = false
+        requestedAt = nil
+        micStartTimeoutLogged = false
         idleSince = nil
         output?.stop()
         output = nil

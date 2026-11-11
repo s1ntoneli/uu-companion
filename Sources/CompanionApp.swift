@@ -449,6 +449,40 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         }
         guard enabled else { status.title = "已暂停"; return }
         if cloudPair != nil {
+            let audioLog = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
+            let audioEvents = audioLog.components(separatedBy: .newlines).suffix(120).filter {
+                if settings.role == "sender" {
+                    return $0.contains("listening on") ||
+                        $0.contains("microphone initialization requested") ||
+                        $0.contains("microphone startup stalled") ||
+                        $0.contains("microphone ON") || $0.contains("microphone OFF") ||
+                        $0.contains("microphone permission denied") ||
+                        $0.contains("failed to start microphone")
+                }
+                return $0.contains("connected to") ||
+                    $0.contains("an app started recording") ||
+                    $0.contains("remote microphone startup timed out") ||
+                    $0.contains("MacBook mic is on") ||
+                    $0.contains("no app is recording any more")
+            }
+            if let latest = audioEvents.last {
+                if latest.contains("startup stalled") || latest.contains("startup timed out") {
+                    status.title = "已配对 · 麦克风启动超时"
+                    return
+                }
+                if latest.contains("permission denied") {
+                    status.title = "请授权本机麦克风"
+                    return
+                }
+                if latest.contains("failed to start microphone") {
+                    status.title = "本机麦克风启动失败"
+                    return
+                }
+                if latest.contains("microphone ON") {
+                    status.title = "正在传输麦克风"
+                    return
+                }
+            }
             let raw = (try? String(contentsOf: cloudLogURL, encoding: .utf8)) ?? ""
             let events = raw.components(separatedBy: .newlines).suffix(90).filter {
                 $0.contains("paired peer online") || $0.contains("paired peer offline") ||

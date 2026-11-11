@@ -25,3 +25,13 @@
 - 免费云服务受 Cloudflare 免费额度、可用性限制，用户可独立部署同协议服务器
 - Apple Developer ID / notarization、完全自动安装驱动的公证分发、安全升级与整机重启自启仍需独立验收
 - 用户需要通过 macOS 正常权限提示授权，不提供绕过系统权限的方式
+
+
+## macOS 27.0.1 音频服务阻塞与容错（13:38 验收）
+
+- MagicBook macOS 27.0.1 的 AVAudioEngine.inputNode 有时阻塞于系统 HAL；独立 AudioQueueNewInput 成功，但 AudioQueueStart 同样阻塞，说明是系统级音频初始化问题，而非 WSS 加密通道问题。
+- 原版 Sender 在同步 CoreAudio 调用时阻塞了整个 TCP 控制队列；系统恢复后甚至可能在录音早已结束时迟到地打开麦克风，存在隐私与安全隐患。
+- 修复方式：把 CoreAudio 初始化和停止移动到独立 captureQueue；串行网络队列始终可处理 S/P/K 指令、心跳、断线；对每次录音使用 captureGeneration 取消令牌，使早已停止的请求不再迟到打开麦克风。
+- 13:37:51 开始真实远程录音，MagicBook 启动请求；13:38:00 两端日志均报告系统麦克风启动超时；13:38:03 MagicBook 响应远程 P 指令并取消录音请求。整个期间网络握手、控制加密连接持续正常，Mini 录音采样全部为零（398400 帧，零非零样本），**不能声称本轮音频成功**。
+- Activity Monitor 正常 Quit/Force Quit 没有成功重启由 _coreaudiod 运行的系统音频服务，普通 launchctl kickstart 返回 SIP Operation not permitted；不尝试绕过 macOS 保护。实际恢复需要使用 macOS 正常管理员授权操作或重新启动 MagicBook，之后重新执行真实音频验收。
+- 新版菜单栏在真正发生音频启动超时后应显示明确错误，而非仅「公网已连接」；源码已实现，菜单项显示还需人工 UI 复核。
