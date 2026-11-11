@@ -44,6 +44,20 @@ if [[ "$UU_DISTRIBUTION_MODE" != "1" ]]; then
     cp NativeMic/build/UUMicNative-0.1.2.pkg "$bundle/Contents/Resources/UUMicNative-0.1.2.pkg"
 fi
 cp INSTALL-MAC.md "$bundle/Contents/Resources/INSTALL-MAC.md"
+# Bundle the driver inside the same app. Public builds must use a Developer
+# ID-signed driver, built by NativeMic/build.sh before compiling this App.
+if [[ ! -d NativeMic/build/UUMicNative.driver ]]; then
+    ./NativeMic/build.sh
+fi
+cp -R NativeMic/build/UUMicNative.driver "$bundle/Contents/Resources/UUMicNative.driver"
+codesign --verify --strict "$bundle/Contents/Resources/UUMicNative.driver"
+if [[ "$UU_DISTRIBUTION_MODE" == "1" ]]; then
+    driverTeam=$(/usr/bin/codesign -dv "$bundle/Contents/Resources/UUMicNative.driver" 2>&1 | /usr/bin/sed -n 's/^TeamIdentifier=//p')
+    if [[ -z "$driverTeam" || "$driverTeam" == "not set" ]]; then
+        echo "Distribution build requires a Developer ID-signed Native Mic driver" >&2
+        exit 1
+    fi
+fi
 # Local builds stay ad-hoc. Set UU_COMPANION_SIGN_IDENTITY to a
 # Developer ID Application certificate for a stable production identity.
 signIdentity="$UU_COMPANION_SIGN_IDENTITY"

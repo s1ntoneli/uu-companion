@@ -1,34 +1,30 @@
-# 安装 uu伴侣（免费开源，macOS）
+# uu伴侣 — 一个 App 的安装方式
 
-uu伴侣包含菜单栏 App，以及仅在接收端需要的 Native Mic 虚拟麦克风插件。不需要账号、订阅或关闭 Gatekeeper/SIP。
+uu伴侣让一台 Mac 使用另一台 Mac 的麦克风。只下载一个经 Apple 公证的 uu伴侣 App；无需用户账号、付费订阅，也无需关闭 Gatekeeper 或 SIP。
 
-## 发送端与接收端
+## 用户操作
 
-1. 从 https://github.com/s1ntoneli/uu-companion/releases 下载经 Apple 公证的 ZIP（Preview 3 或之后）。请确认下载地址来自此 GitHub 项目。
-2. 解压 ZIP，将里面的 uu伴侣.app 拖入 Applications（应用程序）快捷方式。
-3. 从「应用程序」启动 uu伴侣，选择「提供本机麦克风」或「使用远程麦克风」。
-4. 发送端按 macOS 提示授予麦克风权限，点击「生成新配对码…」。
+1. 从 https://github.com/s1ntoneli/uu-companion/releases 下载最新版 One-App ZIP，解压，把 uu伴侣.app 拖入“应用程序”。
+2. 启动 uu伴侣，首次选择「提供本机麦克风」或「使用远程麦克风」。
+3. 发送端只需正常授权麦克风，不需要任何驱动。
+4. 接收端首次启动时点击「安装 Native Mic」，在 Apple 标准管理员对话框中授权。驱动已包含在 App 内，无需另找安装包、打开终端或手动拖文件到系统文件夹。
+5. 安装成功后保存工作并正常重启接收端，macOS 的 Core Audio 才会加载新插件。再次打开 uu伴侣即可使用，无需重复安装。
+6. 发送端点击「生成新配对码…」，接收端点击「输入配对码…」。在 ChatGPT 等程序中选择 uu伴侣 Native Mic 作为音频输入设备。
 
-## 接收端额外安装 Native Mic
+## 安装过程与权限
 
-1. 在 ZIP 解压文件夹中，将 UUMicNative.driver 拖入「音频插件位置」快捷方式。它指向系统目录 /Library/Audio/Plug-Ins/HAL。
-2. 按 Finder 的正常系统提示授予管理员权限。不要关闭 Gatekeeper 或 SIP，也不要双击“打开”驱动。
-3. 保存工作并正常重新启动接收端 Mac，让 Core Audio 加载新插件。
-4. 在「系统设置 → 声音 → 输入」确认能看到 uu伴侣 Native Mic。
-5. 接收端菜单栏选择「输入配对码…」，粘贴发送端复制的 16 位配对码。
-6. 打开 ChatGPT 或其他录音软件，选择 uu伴侣 Native Mic 作为输入设备并说话。系统播放输出仍保持原来的扬声器。
+- 内置的 UUMicNative.driver 由 Apple Developer ID Application 签名。安装会先写入系统音频插件目录以外的暂存文件夹、校验签名，再仅替换 uu伴侣自己的驱动。
+- 原驱动会备份到 /Library/Application Support/uu伴侣/UUMicNative.previous.driver，不删除其他软件的音频插件。
+- 写入 /Library/Audio/Plug-Ins/HAL/ 需要 macOS 管理员授权。uu伴侣不会读取、存储或传送管理员密码。
+- 系统音频驱动安装成功后，需要正常重启接收端。App 不会强制重启或关闭 macOS 安全保护。
+- 如失败，可从菜单「安装 / 修复 Native Mic 驱动…」重新安装。无需命令行。
 
-如果 Finder 没有请求管理员权限，请确认使用的是 /Library/Audio/Plug-Ins/HAL，而不是用户文件夹下的 ~/Library/Audio/Plug-Ins/HAL。
+## 排查
 
-## 配对、隐私及问题排查
+- 接收端看不到 Native Mic：确认安装成功，正常重启；若仍未出现，尝试菜单「修复 Native Mic 驱动」。
+- 已配对但没有波形：检查发送端的麦克风授权，以及菜单中的启动超时提示。macOS 的 Core Audio 卡死时可能需要正常重启发送端。
+- 公网不通：确认两端使用同一 WSS 中继服务器。公共中继免费但受配额限制，也支持自部署。
+- 16 位配对码是长期有效的访问凭据，不要公开分享。发送端重新生成会撤销旧配对。
+- ZIP 的公证票据在首次运行时由 Gatekeeper 通过互联网查询 Apple。无需关闭 Gatekeeper 或 SIP。
 
-- 配对码是长期有效的凭据，不要分享给不信任的人。发送端重新生成即可取消原配对关系。
-- 只有接收端实际录音时才自动开麦，停止录音后自动关麦。音频设备启动失败时，请检查菜单栏是否提示超时或权限问题。
-- 公网默认通过免费 WSS 发现/中继服务传送端到端加密音频。也可自建 Relay，双方必须选择同一服务器地址。
-- 如果未检测到 Native Mic，检查驱动路径和签名，然后正常重启接收端。
-- 如果发送端已配对但无法录音，检查「系统设置 → 隐私与安全性 → 麦克风」，必要时正常重启发送端使系统音频服务恢复。
-- 本地开发环境可使用 ./build.sh 与 ./NativeMic/package.sh 构建自己的测试包；本地未签名测试 .pkg 不等于公开分发安装包。
-
-ZIP 可以经过 Apple 公证，但不能给 ZIP 本身附加离线公证票据。首次启动前请保持联网，让 Gatekeeper 正常向 Apple 检查公证状态。无需关闭任何系统安全保护。
-
-更多信息见 README.md 和 Signing/README.md。
+开发者可运行 ./build.sh 编译源码；分发版使用 UU_DISTRIBUTION_MODE=1 和 Developer ID 签名。其他信息见 README.md 和 Signing/README.md。

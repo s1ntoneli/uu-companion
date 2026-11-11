@@ -35,3 +35,10 @@ Apple notarization returned Accepted for Preview 3 with the App and separate sig
 ### Reproducible signed ZIP
 
 The source repository includes scripts/package-notarized-zip.sh to build the signed App and signed Native Mic driver into one archive (no unsigned nested pkg), and scripts/notarize-zip.sh to submit the exact archive and require an Accepted status. These scripts read signing identity names and Apple API credential paths from the operator environment; they never commit or print private keys. For notarization, provide NOTARYTOOL_PROFILE or ASC_KEY_PATH, ASC_KEY_ID, ASC_ISSUER_ID. The public ZIP contains both Finder shortcuts, a setup guide, and native binaries.
+
+
+## Single-App distribution with embedded signed audio plugin
+
+The distribution build embeds a separately Developer-ID-signed Native Mic driver in the resources directory of uu伴侣.app, without nesting an unsigned pkg. On the receiving Mac the user clicks a single Install action. The app calls the normal macOS administrator authentication via AppleScript and osascript. The driver is copied to a staging area outside HAL, verified using codesign --strict, assigned root ownership, then moved into /Library/Audio/Plug-Ins/HAL/UUMicNative.driver. The previous version is backed up outside HAL. Restart the receiving Mac after installation to allow Core Audio to load the audio plugin.
+
+A notarization Accepted response alone is not proof that installation succeeds. The admin prompt, plugin presence, and real sound capture must be validated separately on a Mac. Never bypass Gatekeeper or SIP.

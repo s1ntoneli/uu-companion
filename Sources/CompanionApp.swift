@@ -29,6 +29,9 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
     private var driverItem: NSMenuItem!
     private var enabled = true
     private var microphonePermissionInFlight = false
+    private var driverInstallationProcess: Process?
+    private var driverInstallationInProgress = false
+    private let driverRestartKey = "uuNativeDriverInstalledAtBootEpoch"
     private var settings: CompanionSettings?
     private var logURL: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/uu-companion.log")
@@ -106,34 +109,152 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         FileManager.default.fileExists(
             atPath: "/Library/Audio/Plug-Ins/HAL/UUMicNative.driver/Contents/MacOS/UUMicNative")
     }
+    private var currentBootEpoch: Double {
+        var boot = timeval()
+        var size = MemoryLayout<timeval>.size
+        if sysctlbyname("kern.boottime", &boot, &size, nil, 0) == 0 {
+            return Double(boot.tv_sec)
+        }
+        return Date().timeIntervalSince1970 - ProcessInfo.processInfo.systemUptime
+    }
+    private var driverRestartPending: Bool {
+        let installedDuringBoot = UserDefaults.standard.double(forKey: driverRestartKey)
+        guard installedDuringBoot > 0 else { return false }
+        // Compare boot identities, not uptime. A login after reboot may take
+        // longer than the previous session had been running.
+        if abs(installedDuringBoot - currentBootEpoch) >= 2 {
+            UserDefaults.standard.removeObject(forKey: driverRestartKey)
+            return false
+        }
+        return true
+    }
+    private func quoteShell(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+    private func quoteAppleScript(_ value: String) -> String {
+        "\"" + value.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n") + "\""
+    }
     @objc private func installDriver() {
-        guard let pkg = Bundle.main.url(forResource: "UUMicNative-0.1.2", withExtension: "pkg") else {
-            // Public notarized ZIP ships the signed driver beside the app, not
-            // an unsigned .pkg nested inside the app bundle.
+        if driverInstallationInProgress {
+            status.title = "正在通过 macOS 安装 Native Mic…"
+            return
+        }
+        if nativeDriverAvailable && driverRestartPending {
+            status.title = "安装成功 · 重启此 Mac 后启用 Native Mic"
+            let alert = NSAlert()
+            alert.messageText = "Native Mic 已安装"
+            alert.informativeText = "需要重新启动这台 Mac，让系统音频服务加载驱动。请保存工作后正常重启。"
+            alert.addButton(withTitle: "知道了")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+            return
+        }
+        let driver = Bundle.main.resourceURL?.appendingPathComponent("UUMicNative.driver", isDirectory: true)
+        guard let source = driver,
+              FileManager.default.fileExists(atPath: source.appendingPathComponent("Contents/MacOS/UUMicNative").path) else {
+            status.title = "此版本缺少 Native Mic 驱动"
             let guide = NSAlert()
-            guide.messageText = "安装 uu伴侣 Native Mic"
-            guide.informativeText = "在 GitHub 下载的 ZIP 解压文件夹中，将 UUMicNative.driver 拖入「音频插件位置」文件夹（/Library/Audio/Plug-Ins/HAL）。按 macOS 提示输入管理员密码，随后重启 Mac，再打开 uu伴侣。无需关闭任何系统安全保护。"
-            guide.addButton(withTitle: "查看安装步骤")
-            guide.addButton(withTitle: "稍后安装")
+            guide.messageText = "缺少内置驱动"
+            guide.informativeText = "请从 GitHub 下载新版完整 uu伴侣.app。下载一个 App 即可，不需要寻找其他驱动安装包。"
+            guide.addButton(withTitle: "查看安装说明")
+            guide.addButton(withTitle: "取消")
             NSApp.activate(ignoringOtherApps: true)
             if guide.runModal() == .alertFirstButtonReturn,
                let url = URL(string: "https://github.com/s1ntoneli/uu-companion/blob/main/INSTALL-MAC.md") {
                 NSWorkspace.shared.open(url)
             }
-            status.title = "请从 ZIP 解压目录安装 Native Mic 并重启 Mac"
             return
         }
+
         let alert = NSAlert()
-        alert.messageText = "安装 uu伴侣 Native Mic"
-        alert.informativeText = "需要通过 macOS 安装器安装开源虚拟麦克风驱动。系统会要求管理员授权，安装后返回此 App，点击启用透传即可。"
-        alert.addButton(withTitle: "打开系统安装器")
+        alert.messageText = nativeDriverAvailable ? "修复 Native Mic" : "安装 Native Mic"
+        alert.informativeText = "uu伴侣会将内置的已签名虚拟麦克风安装到 macOS 系统音频目录。系统将要求管理员授权。安装后需要重启这台 Mac；不会关闭系统安全保护或影响其他音频插件。"
+        alert.addButton(withTitle: "安装")
         alert.addButton(withTitle: "取消")
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        if NSWorkspace.shared.open(pkg) {
-            status.title = "请在系统安装器中批准安装 Native Mic"
-        } else {
-            status.title = "无法打开安装器"
+
+        let support = "/Library/Application Support/uu伴侣"
+        let staging = support + "/UUMicNative.next.driver"
+        let backup = support + "/UUMicNative.previous.driver"
+        let destination = "/Library/Audio/Plug-Ins/HAL/UUMicNative.driver"
+        // Stage and verify the signed driver BEFORE changing the active HAL
+        // directory. Only our own named bundle is replaced, never other
+        // installed audio drivers. Keep the old bundle outside HAL for rollback.
+        let shell = [
+            "/bin/mkdir -p " + quoteShell(support) + " /Library/Audio/Plug-Ins/HAL",
+            "/bin/rm -rf " + quoteShell(staging),
+            "/usr/bin/ditto " + quoteShell(source.path) + " " + quoteShell(staging),
+            "/usr/bin/codesign --verify --strict " + quoteShell(staging),
+            "/usr/sbin/chown -R root:wheel " + quoteShell(staging),
+            "/bin/chmod -R go-w " + quoteShell(staging),
+            "/bin/chmod -R a+rX " + quoteShell(staging),
+            "/bin/rm -rf " + quoteShell(backup),
+            "if [ -e " + quoteShell(destination) + " ]; then /bin/mv " +
+                quoteShell(destination) + " " + quoteShell(backup) + "; fi",
+            "/bin/mv " + quoteShell(staging) + " " + quoteShell(destination),
+            "/usr/bin/codesign --verify --strict " + quoteShell(destination)
+        ].joined(separator: " && ")
+        // The privileged action uses the normal macOS administrator dialog.
+        // No password is read, logged, stored, or transmitted by uu伴侣.
+        let appleScript = "do shell script " + quoteAppleScript(shell) + " with administrator privileges"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", appleScript]
+        let errors = Pipe()
+        process.standardError = errors
+        process.standardOutput = Pipe()
+        driverInstallationInProgress = true
+        driverItem.isEnabled = false
+        status.title = "请完成 macOS 管理员授权…"
+        process.terminationHandler = { [weak self] finished in
+            let details = String(data: errors.fileHandleForReading.readDataToEndOfFile(),
+                                 encoding: .utf8) ?? ""
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.driverInstallationProcess = nil
+                self.driverInstallationInProgress = false
+                self.driverItem.isEnabled = true
+                if finished.terminationStatus == 0 && self.nativeDriverAvailable {
+                    UserDefaults.standard.set(self.currentBootEpoch,
+                                              forKey: self.driverRestartKey)
+                    self.status.title = "Native Mic 已安装 · 请重启这台 Mac"
+                    self.enabled = false
+                    self.task?.terminate()
+                    self.task = nil
+                    self.cloudTask?.terminate()
+                    self.cloudTask = nil
+                    self.appendLoginDiagnostic("Native Mic installation succeeded; reboot required")
+                    let complete = NSAlert()
+                    complete.messageText = "Native Mic 安装成功"
+                    complete.informativeText = "驱动已安装。请保存工作并正常重启这台 Mac。重新打开 uu伴侣后即可配对使用远程麦克风。"
+                    complete.addButton(withTitle: "知道了")
+                    NSApp.activate(ignoringOtherApps: true)
+                    complete.runModal()
+                } else {
+                    let cancelled = details.contains("User canceled") || details.contains("-128")
+                    self.status.title = cancelled ? "已取消驱动安装" : "驱动安装失败"
+                    self.appendLoginDiagnostic("Native Mic installation failed or cancelled, exit=\(finished.terminationStatus)")
+                    if !cancelled {
+                        let failure = NSAlert()
+                        failure.messageText = "Native Mic 安装失败"
+                        failure.informativeText = "系统未完成管理员授权或无法写入音频插件目录。请检查磁盘权限后重试。\n\n" + String(details.suffix(280))
+                        failure.addButton(withTitle: "知道了")
+                        NSApp.activate(ignoringOtherApps: true)
+                        failure.runModal()
+                    }
+                }
+            }
+        }
+        do {
+            try process.run()
+            driverInstallationProcess = process
+        } catch {
+            driverInstallationInProgress = false
+            driverItem.isEnabled = true
+            status.title = "无法启动系统安装授权：\(error.localizedDescription)"
         }
     }
 
@@ -391,6 +512,10 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
     }
     private func start() {
         guard enabled, task == nil, let settings else { return }
+        if settings.role == "receiver", (!nativeDriverAvailable || driverRestartPending) {
+            status.title = driverRestartPending ? "请重启 Mac 以启用 Native Mic" : "需要安装 Native Mic"
+            return
+        }
         if settings.role == "sender" {
             switch AVCaptureDevice.authorizationStatus(for: .audio) {
             case .authorized:
@@ -484,6 +609,17 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         toggle.title = enabled ? "暂停透传" : "启用透传"
         item.button?.image = NSImage(systemSymbolName: enabled ? "mic" : "mic.slash", accessibilityDescription: "uu伴侣")
         guard let settings else { status.title = "请设置本机角色"; return }
+        if settings.role == "receiver" {
+            driverItem.title = nativeDriverAvailable ? "修复 Native Mic 驱动…" : "安装 Native Mic 驱动…"
+            if driverInstallationInProgress {
+                status.title = "正在等待 macOS 安装授权…"
+                return
+            }
+            if driverRestartPending {
+                status.title = "Native Mic 已安装 · 请重启这台 Mac"
+                return
+            }
+        }
         if settings.role == "receiver" && !nativeDriverAvailable &&
            settings.virtualDeviceName?.contains("Native") == true {
             status.title = "需要安装 Native Mic 驱动"
