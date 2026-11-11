@@ -10,6 +10,10 @@ uu伴侣是一款独立的 Mac 麦克风透传工具，**不依赖 UU 远程**�
 
 免费、MIT 开源，无需账号或订阅。
 
+**[下载最新版本 · GitHub Releases](https://github.com/s1ntoneli/uu-companion/releases)**
+
+> 请选择 Releases 列表中最新的适用版本。部分预览版可能尚未完成 Apple 公证；签名和公证状态以各版本的 Release Notes 为准。
+
 ## 主要功能
 
 - 局域网：Bonjour 发现或指定 IP，直接 TCP 连接。
@@ -71,7 +75,7 @@ uu伴侣是一款独立的 Mac 麦克风透传工具，**不依赖 UU 远程**�
 
 ## 公共服务器与自部署
 
-**已发布的 Preview 4 是迁移前的历史构建**，App 中可能仍显示 `wss://uu-companion-relay.auv1107.workers.dev`。两者实际接入同一个 Cloudflare Worker；想使用新域名，可在菜单栏选择「发现 / 中继服务器…」并填入 `wss://uu.gokoding.com`。新版 App 会自动将旧官方默认地址迁移到新域名，同时保留自行部署的服务器设置。
+**Preview 4 是迁移前的历史构建**，App 中可能仍显示 `wss://uu-companion-relay.auv1107.workers.dev`。两者实际接入同一个 Cloudflare Worker；想使用新域名，可在菜单栏选择「发现 / 中继服务器…」并填入 `wss://uu.gokoding.com`。新版 App 会自动将旧官方默认地址迁移到新域名，同时保留自行部署的服务器设置。
 
 免费公开中继（Cloudflare 代理的自有域名）：wss://uu.gokoding.com
 
@@ -94,9 +98,9 @@ uu伴侣是一款独立的 Mac 麦克风透传工具，**不依赖 UU 远程**�
 - 当前公网模式不能穿透之后的 ICE/P2P；音频由 Relay 转发，因此中继配额会影响使用时长。
 - **macOS 27 Core Audio 兼容性**：部分系统可能在启动实体麦克风时阻塞（AVAudioEngine、AudioQueue 均可受影响）。uu伴侣会在等待超过 8 秒后明确报告麦克风启动超时、保持配对网络可用，并在录音停止时撤销迟到启动请求；但无法替代系统修复。必要时请在保存工作后正常重启发送端 Mac。当前 MagicBook 在最后一次测试仍受到此系统问题影响。
 - 自有驱动的本机注入接口尚未完成强进程身份校验，请仅在可信 Mac 上使用。
-- 面向公众的 Preview 3 ZIP 已完成 Developer ID 签名和 Apple 公证，解压后经 Gatekeeper 在线检查验证。Native Mic 驱动可从 App 内点击一次安装（系统管理员授权），然后重启；尚未完成所有 macOS 版本的干净机器首装、长期稳定性验收。
+- 不同预览版本的 Apple 公证状态不同：Preview 4 已完成公证，Preview 5 已进行 Developer ID 签名、尚未完成 Apple 公证。安装前请阅读对应 Release Notes。Native Mic 驱动可在 App 内授权安装后重启；尚未完成所有 macOS 版本的干净机器首装、长期稳定性验收。
 
-发行签名/公证的严格步骤见 [Signing/README.md](Signing/README.md)。可下载安装的 Preview 3 是 Apple 已公证的 ZIP，包含一个内置已签名 Native Mic 驱动的 App 和安装说明，但由于未能在远程沙盒中附加离线票据，首次运行时须联网让 Gatekeeper 查询 Apple。
+发行签名/公证的严格步骤见 [Signing/README.md](Signing/README.md)。旧版曾通过 Apple 公证，但**公证不随版本继承**；每个下载包必须单独验收。已公证版本的 ZIP 未必包含离线票据，首次运行可能需要联网供 Gatekeeper 查询。
 
 ## 验收结果
 
@@ -111,7 +115,7 @@ uu伴侣是一款独立的 Mac 麦克风透传工具，**不依赖 UU 远程**�
 
 在修复首次 TCC 麦克风权限申请、云桥接本机服务重试和发送端音频图预初始化后，又完成连续三轮公网音频验收：每轮 398400 帧，分别 259716、327266、327692 个非零采样；开麦耗时 0.62 秒、0.60 秒、0.82 秒。第三轮是在 MagicBook uu伴侣完全退出并重新启动后的首次录音。三轮均按需开麦、按需关麦。仍需在干净 Mac 上完成首次安装与正常开机启动等测试。
 
-Preview 3 开始提供经过 Apple 官方公证的 ZIP（非一键安装）。请依照 [安装说明](INSTALL-MAC.md) 在 App 内点击安装 Native Mic 驱动，不要绕过 Gatekeeper 或 SIP。
+下载时请从 [GitHub Releases](https://github.com/s1ntoneli/uu-companion/releases) 选择最新适用版本，并核对该版本的签名/公证信息。请依照 [安装说明](INSTALL-MAC.md) 在 App 内点击安装 Native Mic 驱动，不要绕过 Gatekeeper 或 SIP。
 
 ## License
 

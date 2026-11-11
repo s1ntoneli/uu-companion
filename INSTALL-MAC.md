@@ -1,6 +1,6 @@
 # uu伴侣 — 一个 App 的安装方式
 
-uu伴侣让一台 Mac 使用另一台 Mac 的麦克风。只下载一个经 Apple 公证的 uu伴侣 App；无需用户账号、付费订阅，也无需关闭 Gatekeeper 或 SIP。
+uu伴侣让一台 Mac 使用另一台 Mac 的麦克风。只需下载一个 uu伴侣 App（各版本 Apple 公证状态请查看 GitHub Releases 说明）；无需用户账号、付费订阅，也无需关闭 Gatekeeper 或 SIP。
 
 ## 用户操作
 
@@ -25,7 +25,7 @@ uu伴侣让一台 Mac 使用另一台 Mac 的麦克风。只下载一个经 Appl
 - 已配对但没有波形：检查发送端的麦克风授权，以及菜单中的启动超时提示。macOS 的 Core Audio 卡死时可能需要正常重启发送端。
 - 公网不通：确认两端使用同一 WSS 中继服务器。公共中继免费但受配额限制，也支持自部署。
 - 16 位配对码是长期有效的访问凭据，不要公开分享。发送端重新生成会撤销旧配对。
-- ZIP 的公证票据在首次运行时由 Gatekeeper 通过互联网查询 Apple。无需关闭 Gatekeeper 或 SIP。
+- **请核对所下载版本是否已完成 Apple 公证**。已公证 ZIP 首次运行时可由 Gatekeeper 在线查询票据；未经公证的预览版可能被 macOS 阻止启动。不要关闭 Gatekeeper 或 SIP。
 
 开发者可运行 ./build.sh 编译源码；分发版使用 UU_DISTRIBUTION_MODE=1 和 Developer ID 签名。其他信息见 README.md 和 Signing/README.md。
 
