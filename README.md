@@ -4,6 +4,8 @@
 
 Use your local microphone on the Mac you're controlling through UU Remote.
 
+![uu伴侣：让本机麦克风的声音传到远程 Mac，在远程设备上使用 AI 语音输入](Assets/uucompanion-hero.webp)
+
 特别适合使用 UU 远程进行 Vibe Coding 的同学：在远程 Mac 上与 AI 交流、写代码时，也能直接用本地麦克风语音输入。
 
 uu伴侣是一款独立的 Mac 麦克风透传工具，**不依赖 UU 远程**。无论你使用 UU 远程、其他远程控制软件，还是只想让两台 Mac 共享麦克风，都可以使用。连接后，远程 Mac 可以像使用本机麦克风一样进行 ChatGPT 语音输入、开会和录音。
