@@ -35,3 +35,17 @@
 - 13:37:51 开始真实远程录音，MagicBook 启动请求；13:38:00 两端日志均报告系统麦克风启动超时；13:38:03 MagicBook 响应远程 P 指令并取消录音请求。整个期间网络握手、控制加密连接持续正常，Mini 录音采样全部为零（398400 帧，零非零样本），**不能声称本轮音频成功**。
 - Activity Monitor 正常 Quit/Force Quit 没有成功重启由 _coreaudiod 运行的系统音频服务，普通 launchctl kickstart 返回 SIP Operation not permitted；不尝试绕过 macOS 保护。实际恢复需要使用 macOS 正常管理员授权操作或重新启动 MagicBook，之后重新执行真实音频验收。
 - 新版菜单栏在真正发生音频启动超时后应显示明确错误，而非仅「公网已连接」；源码已实现，菜单项显示还需人工 UI 复核。
+
+
+## MagicBook CoreAudio 恢复后的连续复测（2026-11-11 14:12–14:14）
+
+MagicBook 的系统进程 coreaudiod PID 从 584 变为 19191，表明音频服务器在先前失败之后最终重启。用原始独立硬件测试 App 再次测试，保持正常公网配对、WSS 和 Native Mic：
+
+- 14:12:19 Mini 开始录音，14:12:24 收到真实实体麦克风音频确认（首次恢复耗时 4.77 秒）；录得 398400 帧、76528 个非零采样、峰值 0.0017278751。MagicBook 14:12:20 启动麦克风、14:12:31 关麦。
+- 14:13:55 第二轮独立测试，Mini 0.71 秒收到开麦确认；录得 398400 帧、324806 个非零采样、峰值 0.0032755996。MagicBook 14:13:55 启动麦克风、14:14:06 关麦。
+- 这两轮经 Cloudflare 公网 Relay 转发加密音频，最终注入 uu伴侣 Native Mic，真实采样并非伪造或仅测试网络连接。
+- 前一次 13:38 macOS Core Audio 卡死仍可能在未来复现；容错修复能防止录音请求堵住网络控制与隐私关麦，**不能从根本上修复 macOS HAL 自身卡死**。
+
+### 发行限制
+
+MagicBook 上真实 Developer ID Application 证书构建成功，且 hardened runtime/麦克风 entitlement 签名验证通过。然而三份本地 App Store Connect API 密钥尝试 notarytool history 均返回 401，未找到可用公证 Keychain profile，亦无 Developer ID Installer 可用私钥。尚不能称为 Apple notarized 公开发行安装包。本项目的 GitHub 预览版本只公开源码及构建指引，不提供绕过 Gatekeeper 的说明。

@@ -95,6 +95,12 @@ Free and open-source accountless microphone sharing between Macs.
 - 已在两台 Mac 验证 WSS 上线、鉴权连接、MagicBook 远端录音控制、Mini 虚拟音频输入。
 - 本机 Git 提交与原始验收记录：ACCEPTANCE-NATIVE-2026-11-11.md。
 
+### 2026-11-11 最终实测
+
+在 MagicBook CoreAudio 服务恢复后，两次连续独立实测均成功：Mini 第一轮录得 398400 帧、76528 个非零采样，第二轮 398400 帧、324806 个非零采样；第二轮远端麦克风在 0.71 秒内启动，两次结束后都自动关麦。容错版在 macOS 音频服务再度卡住时仍会报告超时、响应关麦请求。原始时间、技术限制见 [ACCEPTANCE-CLOUD-2026-11-11.md](ACCEPTANCE-CLOUD-2026-11-11.md)。
+
+正式公证安装包尚不可用，本次只提供开源源码预览。不要以绕过 Gatekeeper 的方式安装来历不明的包。
+
 ## License
 
 MIT。原始第三方 MIT 授权声明见 THIRD_PARTY_NOTICES.md、LICENSE-MicBridge-MIT.txt 和 NativeMic/LICENSE-Hush-MIT.txt。
