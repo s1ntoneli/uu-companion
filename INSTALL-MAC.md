@@ -1,6 +1,6 @@
 # uu伴侣 — 一个 App 的安装方式
 
-uu伴侣让一台 Mac 使用另一台 Mac 的麦克风。只需下载一个 uu伴侣 App（各版本 Apple 公证状态请查看 GitHub Releases 说明）；无需用户账号、付费订阅，也无需关闭 Gatekeeper 或 SIP。
+uu伴侣让一台 Mac 使用另一台 Mac 的麦克风。只需下载一个 uu伴侣 App（Preview 5 已通过 Apple 公证并附加票据；其他版本的状态请查看 GitHub Releases）；无需用户账号、付费订阅，也无需关闭 Gatekeeper 或 SIP。
 
 ## 用户操作
 

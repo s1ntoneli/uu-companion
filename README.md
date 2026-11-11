@@ -14,7 +14,7 @@ uu伴侣是一款独立的 Mac 麦克风透传工具，**不依赖 UU 远程**�
 
 **[下载最新版本 · GitHub Releases](https://github.com/s1ntoneli/uu-companion/releases)**
 
-> 请选择 Releases 列表中最新的适用版本。部分预览版可能尚未完成 Apple 公证；签名和公证状态以各版本的 Release Notes 为准。
+> 最新 Preview 5 已完成 Apple Developer ID 签名、Apple 公证并附加公证票据，Gatekeeper 已验证通过。若曾下载旧版 Preview 5，请重新从 Releases 下载。
 
 ## 主要功能
 
@@ -100,9 +100,9 @@ uu伴侣是一款独立的 Mac 麦克风透传工具，**不依赖 UU 远程**�
 - 当前公网模式不能穿透之后的 ICE/P2P；音频由 Relay 转发，因此中继配额会影响使用时长。
 - **macOS 27 Core Audio 兼容性**：部分系统可能在启动实体麦克风时阻塞（AVAudioEngine、AudioQueue 均可受影响）。uu伴侣会在等待超过 8 秒后明确报告麦克风启动超时、保持配对网络可用，并在录音停止时撤销迟到启动请求；但无法替代系统修复。必要时请在保存工作后正常重启发送端 Mac。当前 MagicBook 在最后一次测试仍受到此系统问题影响。
 - 自有驱动的本机注入接口尚未完成强进程身份校验，请仅在可信 Mac 上使用。
-- 不同预览版本的 Apple 公证状态不同：Preview 4 已完成公证，Preview 5 已进行 Developer ID 签名、尚未完成 Apple 公证。安装前请阅读对应 Release Notes。Native Mic 驱动可在 App 内授权安装后重启；尚未完成所有 macOS 版本的干净机器首装、长期稳定性验收。
+- Preview 4 和 Preview 5 均已完成 Apple 公证；Preview 5 还附加了公证票据，并在下载后通过 Gatekeeper 验证。安装前请阅读对应 Release Notes。Native Mic 驱动可在 App 内授权安装后重启；尚未完成所有 macOS 版本的干净机器首装、长期稳定性验收。
 
-发行签名/公证的严格步骤见 [Signing/README.md](Signing/README.md)。旧版曾通过 Apple 公证，但**公证不随版本继承**；每个下载包必须单独验收。已公证版本的 ZIP 未必包含离线票据，首次运行可能需要联网供 Gatekeeper 查询。
+发行签名/公证的严格步骤见 [Signing/README.md](Signing/README.md)。**公证不随版本继承**；每次发布新的二进制包都必须重新提交 Apple 并验证。Preview 5 的 App 已成功附加公证票据，公开 ZIP 重新下载后仍通过 macOS Gatekeeper 校验。
 
 ## 验收结果
 
