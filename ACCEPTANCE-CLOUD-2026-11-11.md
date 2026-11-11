@@ -49,3 +49,21 @@ MagicBook 的系统进程 coreaudiod PID 从 584 变为 19191，表明音频服�
 ### 发行限制
 
 MagicBook 上真实 Developer ID Application 证书构建成功，且 hardened runtime/麦克风 entitlement 签名验证通过。然而三份本地 App Store Connect API 密钥尝试 notarytool history 均返回 401，未找到可用公证 Keychain profile，亦无 Developer ID Installer 可用私钥。尚不能称为 Apple notarized 公开发行安装包。本项目的 GitHub 预览版本只公开源码及构建指引，不提供绕过 Gatekeeper 的说明。
+
+
+## 15:16–15:20 首次启动稳定性修复与验收
+
+14:41 系统麦克风权限尚未授予时，旧 cloud-bridge 已在配对状态；14:44 sender 获得 TCC 授权并启动，但旧 bridge 不自动连接 localhost，导致远端继续静音。修复后：
+
+- 发送端菜单栏主 App 首次启动先检查并申请麦克风 TCC 权限，拒绝时不会误启动采集，也提供清晰的系统设置提示
+- CloudBridge sender 每 3 秒检测配对端在线且本机 TCP 尚未连接时自动重试 127.0.0.1:50555，避免授权时序阻塞
+- 麦克风授权后，在独立 captureQueue 对 AVAudioEngine.inputNode 预初始化，**不执行 engine.start()**，避免首次录音才发生 HAL graph 初始化
+- 始终由远端录音请求才真正调用 engine.start()，停止录音即 engine.stop()，保留已创建的音频输入图供下次启动；Core Audio 偶发卡死时仍按原有 8 秒超时和取消机制保护
+- 使用 Mini 的独立测试 App 从 uu伴侣 Native Mic 实际录音，三轮均为 398400 帧：
+  - 15:17:24：259716 非零采样，峰值 0.0033094427；0.62 秒开麦，15:17:36 关麦
+  - 15:18:27：327266 非零采样，峰值 0.0024090814；0.60 秒开麦，15:18:38 关麦
+  - 15:19:51：**退出并重新打开 MagicBook 的 uu伴侣之后首次录音**，327692 非零采样，峰值 0.0034850787；0.82 秒开麦，15:20:02 关麦
+- MagicBook 发送端日志确认三个真实 microphone ON / OFF 周期，服务均保持绑定 127.0.0.1:50555
+- Mac mini 始终未更改扬声器默认输出，Native Mic 的输入设备保持正常
+
+这三轮复测是功能通过，并非所有 macOS 驱动组合/长时间运行/整机重启的充分稳定性证明。首启权限和 UI 提示仍需 clean macOS 首次安装验收；Apple 公证仍未通过。

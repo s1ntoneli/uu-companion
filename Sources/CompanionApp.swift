@@ -28,6 +28,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
     private var localItem: NSMenuItem!
     private var driverItem: NSMenuItem!
     private var enabled = true
+    private var microphonePermissionInFlight = false
     private var settings: CompanionSettings?
     private var logURL: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/uu-companion.log")
@@ -379,6 +380,36 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
     }
     private func start() {
         guard enabled, task == nil, let settings else { return }
+        if settings.role == "sender" {
+            switch AVCaptureDevice.authorizationStatus(for: .audio) {
+            case .authorized:
+                break
+            case .notDetermined:
+                status.title = "需要授权本机麦克风"
+                if !microphonePermissionInFlight {
+                    microphonePermissionInFlight = true
+                    NSApp.activate(ignoringOtherApps: true)
+                    AVCaptureDevice.requestAccess(for: .audio) { [weak self] allowed in
+                        DispatchQueue.main.async {
+                            guard let self else { return }
+                            self.microphonePermissionInFlight = false
+                            if allowed {
+                                self.start()
+                            } else {
+                                self.status.title = "麦克风未授权 · 请在系统设置中允许"
+                            }
+                        }
+                    }
+                }
+                return
+            case .denied, .restricted:
+                status.title = "麦克风权限受限 · 请在系统设置中允许"
+                return
+            @unknown default:
+                status.title = "麦克风权限状态未知"
+                return
+            }
+        }
         let binary = settings.role == "sender" ? "uu-sender" : "uu-receiver"
         guard let path = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent(binary) else { return }
         let p = Process()
@@ -448,6 +479,14 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             return
         }
         guard enabled else { status.title = "已暂停"; return }
+        if settings.role == "sender" {
+            let micAccess = AVCaptureDevice.authorizationStatus(for: .audio)
+            if micAccess != .authorized {
+                status.title = micAccess == .notDetermined ?
+                    "请完成麦克风授权" : "麦克风未授权 · 系统设置"
+                return
+            }
+        }
         if cloudPair != nil {
             let audioLog = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
             let audioEvents = audioLog.components(separatedBy: .newlines).suffix(120).filter {

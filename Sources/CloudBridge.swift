@@ -83,6 +83,18 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
         }
         watchdog.resume()
         _watchdog = watchdog
+        // First-launch microphone TCC approval can delay the local sender.
+        // Retry localhost independently of the public WSS pairing state.
+        if role == "sender" {
+            let localRetry = DispatchSource.makeTimerSource(queue: q)
+            localRetry.schedule(deadline: .now() + .seconds(3), repeating: .seconds(3))
+            localRetry.setEventHandler { [weak self] in
+                guard let self, self.peerOnline, self.local == nil else { return }
+                self.startLocalSender()
+            }
+            localRetry.resume()
+            _localRetryTimer = localRetry
+        }
         // Batch streaming PCM every 50 ms rather than one WebSocket message
         // per Core Audio callback; this reduces public relay quota use.
         if role == "sender" {
@@ -94,6 +106,7 @@ final class Bridge: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegat
         }
     }
     private var _watchdog: DispatchSourceTimer?
+    private var _localRetryTimer: DispatchSourceTimer?
     private var _audioTimer: DispatchSourceTimer?
     private func flushAudio() {
         guard !audioBatch.isEmpty else { return }

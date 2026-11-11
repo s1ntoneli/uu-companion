@@ -66,6 +66,7 @@ final class Sender {
     // NEVER initialize or stop the microphone on the network/control queue.
     private let captureQueue = DispatchQueue(label: "uu.capture", qos: .userInitiated)
     private var engine: AVAudioEngine? // captureQueue only
+    private var graphConfigured = false // captureQueue only
     private var captureGeneration = 0 // network queue only
     private var microphoneStarting = false // network queue only
     private var microphoneStartTime: Date? // network queue only
@@ -124,6 +125,25 @@ final class Sender {
         }
         watchdog.resume()
         heartbeatTimer = watchdog
+    }
+
+    /// Prepare the HAL input graph once on launch without starting audio I/O.
+    /// macOS 27 can take a long time on first inputNode access. This runs on
+    /// captureQueue, never blocks the pairing/control queue and does NOT turn
+    /// on actual microphone capture.
+    func prewarmMicrophone() {
+        captureQueue.async { [weak self] in
+            guard let self else { return }
+            log("preparing physical microphone input (capture OFF)")
+            let instance = AVAudioEngine()
+            let format = instance.inputNode.outputFormat(forBus: 0)
+            if format.sampleRate > 0 {
+                self.engine = instance
+                log("physical microphone input ready (capture OFF, \(Int(format.sampleRate)) Hz)")
+            } else {
+                log("physical microphone input unavailable during prewarm")
+            }
+        }
     }
 
     private func accept(_ conn: NWConnection) {
@@ -241,7 +261,7 @@ final class Sender {
         captureQueue.async { [weak self] in
             guard let self else { return }
             // Potentially blocking calls below live on the capture queue.
-            let newEngine = AVAudioEngine()
+            let newEngine = self.engine ?? AVAudioEngine()
             let input = newEngine.inputNode
             let format = input.outputFormat(forBus: 0)
             guard format.sampleRate > 0 else {
@@ -265,7 +285,7 @@ final class Sender {
                     }
                 }
                 self.queue.async {
-                    guard self.captureGeneration == generation else { return }
+                    guard self.microphoneRate != nil && !self.active.isEmpty else { return }
                     for id in self.active {
                         if let connection = self.clients[id] {
                             self.send(audio, to: connection)
@@ -274,8 +294,12 @@ final class Sender {
                 }
                 return noErr
             }
-            newEngine.attach(sink)
-            newEngine.connect(input, to: sink, format: format)
+            if !self.graphConfigured {
+                newEngine.attach(sink)
+                newEngine.connect(input, to: sink, format: format)
+                self.graphConfigured = true
+            }
+            self.engine = newEngine
             // If the user already stopped recording while HAL initialization
             // blocked, do not start the microphone when the OS finally returns.
             let stillWanted = self.queue.sync {
@@ -311,7 +335,9 @@ final class Sender {
     }
 
     private func stopEngineOnCaptureQueue() {
-        if let engine { engine.stop(); self.engine = nil }
+        // Keep the initialized HAL input graph for the next recording.
+        // Stopping the engine still closes actual microphone capture.
+        engine?.stop()
         if let a = activity {
             ProcessInfo.processInfo.endActivity(a)
             activity = nil
@@ -333,12 +359,24 @@ final class Sender {
 
 }
 
-AVCaptureDevice.requestAccess(for: .audio) { granted in
-    if !granted {
-        log("microphone permission denied — allow it in System Settings › Privacy & Security › Microphone")
-    }
-}
-
 let sender = Sender()
 do { try sender.start() } catch { log("cannot start: \(error)"); exit(1) }
+let micPermission = AVCaptureDevice.authorizationStatus(for: .audio)
+log("microphone TCC authorization: \(micPermission.rawValue)")
+switch micPermission {
+case .authorized:
+    sender.prewarmMicrophone()
+case .notDetermined:
+    AVCaptureDevice.requestAccess(for: .audio) { granted in
+        if granted {
+            sender.prewarmMicrophone()
+        } else {
+            log("microphone permission denied — allow it in System Settings › Privacy & Security › Microphone")
+        }
+    }
+case .denied, .restricted:
+    log("microphone permission denied — allow it in System Settings › Privacy & Security › Microphone")
+@unknown default:
+    log("microphone permission status unknown")
+}
 dispatchMain()
