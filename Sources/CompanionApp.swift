@@ -978,9 +978,9 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         } else if settings?.role == "sender" {
             alert.informativeText = "1. 允许这台 Mac 使用麦克风。\n2. 复制配对码，在另一台 Mac 的 uu伴侣中粘贴。\n3. 远程 Mac 选择「uu伴侣 Native Mic」并开始语音输入时，这台 Mac 才会开麦。\n\n请查看三个连接状态，确认不只是设备在线。"
         } else if !nativeDriverAvailable || driverRestartPending {
-            alert.informativeText = "1. 安装 Native Mic 驱动。\n2. 保存工作后正常重启这台 Mac，让系统加载驱动。\n3. 在提供麦克风的 Mac 复制配对码，在这里输入。\n4. 打开 ChatGPT 或 IDE，选择「uu伴侣 Native Mic」作为输入设备。"
+            alert.informativeText = "1. 安装 Native Mic 驱动。\n2. uu伴侣会自动检测驱动并尝试重新加载系统音频，只有仍无法识别时才建议重启。\n3. 在提供麦克风的 Mac 复制配对码，在这里输入。\n4. 两台 Mac 连接后使用 uu伴侣的「现场试音」，通过后再打开 ChatGPT 或 IDE。"
         } else {
-            alert.informativeText = "1. 在提供麦克风的 Mac 复制 16 位配对码。\n2. 在本机点击「输入配对码」。\n3. 检查「本机音频已就绪」「另一台 Mac 已在线」。\n4. 在远程 App 中选择「uu伴侣 Native Mic」并开始录音。\n\n配对成功只是连接建立，实际传声会另行显示。"
+            alert.informativeText = "1. 在提供麦克风的 Mac 复制 16 位配对码。\n2. 在本机点击「输入配对码」。\n3. 检查「本机音频已就绪」「另一台 Mac 已在线」。\n4. 在 uu伴侣点击「现场试音」，确认收到有效采样，再在 ChatGPT 或 IDE 中选择 Native Mic。\n\n配对成功只是连接建立，实际传声会另行显示。"
         }
         alert.addButton(withTitle: "知道了")
         NSApp.activate(ignoringOtherApps: true)
