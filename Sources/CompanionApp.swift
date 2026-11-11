@@ -3,12 +3,16 @@ import AVFoundation
 import ServiceManagement
 import Foundation
 
-struct CompanionSettings: Decodable {
+struct CompanionSettings: Codable {
     let role: String
     let host: String?
     let port: Int?
     let token: String
     let virtualDeviceName: String?
+}
+struct CloudPair: Codable {
+    let code: String
+    let server: String
 }
 final class CompanionDelegate: NSObject, NSApplicationDelegate {
     private var item: NSStatusItem!
@@ -16,6 +20,12 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
     private let mode = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private var toggle = NSMenuItem(title: "暂停", action: #selector(toggleTransfer), keyEquivalent: "")
     private var task: Process?
+    private var cloudTask: Process?
+    private var cloudPair: CloudPair?
+    private var pairItem: NSMenuItem!
+    private var codeItem: NSMenuItem!
+    private var serverItem: NSMenuItem!
+    private var localItem: NSMenuItem!
     private var enabled = true
     private var settings: CompanionSettings?
     private var logURL: URL {
@@ -33,6 +43,229 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             try? file.close()
         }
     }
+    private var relayURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/uu伴侣/relay.json")
+    }
+    private var cloudLogURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/uu-companion-cloud.log")
+    }
+    private let officialRelay = "wss://uu-companion-relay.auv1107.workers.dev"
+    private let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+
+    private func loadCloudPair() {
+        guard let data = try? Data(contentsOf: relayURL),
+              let value = try? JSONDecoder().decode(CloudPair.self, from: data),
+              value.code.count == 16,
+              value.code.allSatisfy({ alphabet.contains($0) }),
+              URL(string: value.server)?.scheme == "wss" else {
+            cloudPair = nil
+            return
+        }
+        cloudPair = value
+    }
+    private func persistCloudPair(_ pair: CloudPair?) {
+        let directory = relayURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: directory,
+                                                 withIntermediateDirectories: true)
+        if let pair {
+            guard let data = try? JSONEncoder().encode(pair) else { return }
+            do {
+                try data.write(to: relayURL, options: [.atomic])
+                chmod(relayURL.path, 0o600)
+                cloudPair = pair
+            } catch {
+                status.title = "配对信息保存失败"
+                return
+            }
+        } else {
+            try? FileManager.default.removeItem(at: relayURL)
+            cloudPair = nil
+        }
+        updatePairingMenu()
+        restartForPairing()
+    }
+    private func updatePairingMenu() {
+        guard pairItem != nil else { return }
+        let receiver = settings?.role == "receiver"
+        pairItem.isEnabled = settings != nil
+        pairItem.title = receiver ? "输入配对码…" : "生成新配对码…"
+        if cloudPair != nil {
+            codeItem.title = receiver ? "已配对 · 复制配对码" : "已生成配对码 · 点击复制"
+            codeItem.isHidden = false
+            localItem.isHidden = false
+        } else {
+            codeItem.isHidden = true
+            localItem.isHidden = true
+        }
+    }
+    @objc private func selectRole() {
+        let alert = NSAlert()
+        alert.messageText = "这台 Mac 要做什么？"
+        alert.informativeText = "提供本机麦克风，或使用另一台 Mac 的麦克风。以后可随时切换。"
+        alert.addButton(withTitle: "提供本机麦克风")
+        alert.addButton(withTitle: "使用远程麦克风")
+        alert.addButton(withTitle: "取消")
+        NSApp.activate(ignoringOtherApps: true)
+        let choice = alert.runModal()
+        guard choice == .alertFirstButtonReturn || choice == .alertSecondButtonReturn else { return }
+        let role = choice == .alertFirstButtonReturn ? "sender" : "receiver"
+        var random = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else {
+            status.title = "无法生成本机认证密钥"
+            return
+        }
+        let token = settings?.token ?? random.map { String(format: "%02x", $0) }.joined()
+        let nativeAvailable = FileManager.default.fileExists(
+            atPath: "/Library/Audio/Plug-Ins/HAL/UUMicNative.driver/Contents/MacOS/UUMicNative")
+        let preferred = role == "receiver" ?
+            (nativeAvailable ? "uu伴侣 Native Mic" : "uu伴侣 Mic") : nil
+        let newSettings = CompanionSettings(role: role, host: settings?.host,
+                                            port: 50555, token: token,
+                                            virtualDeviceName: preferred)
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+            "Library/Application Support/uu伴侣/config.json")
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try JSONEncoder().encode(newSettings).write(to: url, options: .atomic)
+            chmod(url.path, 0o600)
+        } catch {
+            status.title = "无法保存角色设置：\(error.localizedDescription)"
+            return
+        }
+        // Invalidate an old pairing when changing roles so it does not silently
+        // grant microphone access to a previously connected device.
+        if settings?.role != role { try? FileManager.default.removeItem(at: relayURL) }
+        settings = nil
+        enabled = true
+        toggle.isEnabled = true
+        loadSettings()
+        loadCloudPair()
+        pairItem.action = role == "receiver" ? #selector(enterCode) : #selector(generateCode)
+        updatePairingMenu()
+        restartForPairing()
+        if role == "receiver" && !nativeAvailable {
+            status.title = "请先安装 uu伴侣 Native Mic 驱动"
+        }
+    }
+
+    @objc private func generateCode() {
+        guard settings?.role == "sender" else { return }
+        var random = [UInt8](repeating: 0, count: 16)
+        guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else {
+            status.title = "随机配对码生成失败"
+            return
+        }
+        let code = String(random.map { alphabet[Int($0 & 31)] })
+        let server = cloudPair?.server ??
+            UserDefaults.standard.string(forKey: "uuRelayURL") ?? officialRelay
+        persistCloudPair(CloudPair(code: code, server: server))
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
+        status.title = "配对码已复制，另一台 Mac 输入即可连接"
+    }
+    @objc private func enterCode() {
+        guard settings?.role == "receiver" else { return }
+        let alert = NSAlert()
+        alert.messageText = "连接另一台 Mac 的麦克风"
+        alert.informativeText = "在提供麦克风的 Mac 上复制配对码，粘贴到这里。无需账号。"
+        let field = NSTextField(string: "")
+        field.placeholderString = "XXXX-XXXX-XXXX-XXXX"
+        field.frame = NSRect(x: 0, y: 0, width: 260, height: 26)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "连接")
+        alert.addButton(withTitle: "取消")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let input = field.stringValue.uppercased().filter { $0 != "-" && $0 != " " }
+        guard input.count == 16, input.allSatisfy({ alphabet.contains($0) }) else {
+            status.title = "配对码格式不正确"
+            return
+        }
+        let server = cloudPair?.server ??
+            UserDefaults.standard.string(forKey: "uuRelayURL") ?? officialRelay
+        persistCloudPair(CloudPair(code: input, server: server))
+        status.title = "正在通过公网连接配对设备…"
+    }
+    @objc private func copyCode() {
+        guard let code = cloudPair?.code else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
+        status.title = "已复制配对码"
+    }
+    @objc private func chooseServer() {
+        let alert = NSAlert()
+        alert.messageText = "发现 / 中继服务器"
+        alert.informativeText = "可以使用免费公共服务，也可以填写自己部署的 WSS 服务器地址。"
+        let field = NSTextField(string: cloudPair?.server ??
+            UserDefaults.standard.string(forKey: "uuRelayURL") ?? officialRelay)
+        field.frame = NSRect(x: 0, y: 0, width: 360, height: 26)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "保存")
+        alert.addButton(withTitle: "取消")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let newURL = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let parsed = URL(string: newURL),
+              parsed.scheme == "wss", parsed.host != nil else {
+            status.title = "服务器地址必须是 wss://"
+            return
+        }
+        UserDefaults.standard.set(newURL, forKey: "uuRelayURL")
+        if let pair = cloudPair {
+            persistCloudPair(CloudPair(code: pair.code, server: newURL))
+        } else { status.title = "服务器已保存，生成或输入配对码后生效" }
+    }
+    @objc private func useLocalNetwork() {
+        persistCloudPair(nil)
+        status.title = "已切回局域网直连"
+    }
+    private func restartForPairing() {
+        task?.terminate()
+        task = nil
+        cloudTask?.terminate()
+        cloudTask = nil
+        guard enabled else { return }
+        startCloudBridge()
+        start()
+    }
+    private func startCloudBridge() {
+        guard enabled, cloudTask == nil, let cloudPair, let settings else { return }
+        guard let binary = Bundle.main.executableURL?.deletingLastPathComponent()
+            .appendingPathComponent("uu-cloud-bridge") else { return }
+        let p = Process()
+        p.executableURL = binary
+        p.arguments = [settings.role]
+        var environment = ProcessInfo.processInfo.environment
+        environment["UU_COMPANION_SECRET"] = settings.token
+        environment["UU_RELAY_CODE"] = cloudPair.code
+        environment["UU_RELAY_URL"] = cloudPair.server
+        p.environment = environment
+        FileManager.default.createFile(atPath: cloudLogURL.path, contents: nil)
+        if let file = FileHandle(forWritingAtPath: cloudLogURL.path) {
+            file.seekToEndOfFile()
+            p.standardOutput = file
+            p.standardError = file
+        }
+        p.terminationHandler = { [weak self] process in
+            DispatchQueue.main.async {
+                guard let self, self.cloudTask === process else { return }
+                self.cloudTask = nil
+                if self.enabled && self.cloudPair != nil {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        self.startCloudBridge()
+                    }
+                }
+            }
+        }
+        do {
+            try p.run()
+            cloudTask = p
+        } catch { status.title = "公网桥接启动失败：\(error.localizedDescription)" }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -44,9 +277,26 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(title)
         menu.addItem(mode)
         menu.addItem(status)
+        let select = NSMenuItem(title: "设置本机角色…",
+                                action: #selector(selectRole), keyEquivalent: "")
+        select.target = self
+        menu.addItem(select)
         menu.addItem(.separator())
         toggle.target = self
         menu.addItem(toggle)
+        menu.addItem(.separator())
+        pairItem = NSMenuItem(title: "配对设备…", action: #selector(generateCode), keyEquivalent: "")
+        pairItem.target = self
+        menu.addItem(pairItem)
+        codeItem = NSMenuItem(title: "配对码", action: #selector(copyCode), keyEquivalent: "")
+        codeItem.target = self
+        menu.addItem(codeItem)
+        serverItem = NSMenuItem(title: "发现 / 中继服务器…", action: #selector(chooseServer), keyEquivalent: "")
+        serverItem.target = self
+        menu.addItem(serverItem)
+        localItem = NSMenuItem(title: "切回局域网直连", action: #selector(useLocalNetwork), keyEquivalent: "")
+        localItem.target = self
+        menu.addItem(localItem)
         let logs = NSMenuItem(title: "查看运行日志", action: #selector(openLogs), keyEquivalent: "")
         logs.target = self
         menu.addItem(logs)
@@ -56,6 +306,12 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quit)
         item.menu = menu
         loadSettings()
+        loadCloudPair()
+        if settings?.role == "receiver" { pairItem.action = #selector(enterCode) }
+        updatePairingMenu()
+        if settings == nil {
+            DispatchQueue.main.async { [weak self] in self?.selectRole() }
+        }
         // Register our single menu-bar app as a login item. No separate
         // legacy LaunchAgent is necessary for future installs.
         let loginBefore = SMAppService.mainApp.status
@@ -67,6 +323,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             }
         }
         appendLoginDiagnostic("SMAppService previous=\(loginBefore), current=\(SMAppService.mainApp.status)")
+        startCloudBridge()
         start()
         Timer.scheduledTimer(timeInterval: 2, target: self, selector: #selector(updateStatus), userInfo: nil, repeats: true)
     }
@@ -75,7 +332,8 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         guard let data = try? Data(contentsOf: path),
               let parsed = try? JSONDecoder().decode(CompanionSettings.self, from: data),
               ["sender", "receiver"].contains(parsed.role), parsed.token.utf8.count >= 32 else {
-            status.title = "缺少配对配置，请运行安装程序"
+            status.title = "首次使用：请设置本机角色"
+            mode.title = "未设置"
             enabled = false
             toggle.isEnabled = false
             return
@@ -97,8 +355,12 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         let p = Process()
         p.executableURL = path
         if settings.role == "receiver" {
-            var args = ["--port", String(settings.port ?? 50555)]
-            if let host = settings.host, !host.isEmpty { args += ["--host", host] }
+            var args = ["--port", String(cloudPair == nil ? (settings.port ?? 50555) : 50556)]
+            if cloudPair != nil {
+                args += ["--host", "127.0.0.1"]
+            } else if let host = settings.host, !host.isEmpty {
+                args += ["--host", host]
+            }
             if let name = settings.virtualDeviceName, !name.isEmpty { args += ["--device", name] }
             if CommandLine.arguments.contains("--test-stream") {
                 args.append("--always-on")
@@ -106,6 +368,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             p.arguments = args
         } else {
             p.arguments = ["--port", String(settings.port ?? 50555)]
+            if cloudPair != nil { p.arguments?.append("--loopback-only") }
         }
         var environment = ProcessInfo.processInfo.environment
         environment["UU_COMPANION_SECRET"] = settings.token
@@ -139,13 +402,34 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
     }
     @objc private func toggleTransfer() {
         enabled.toggle()
-        if enabled { start() }
-        else { task?.terminate(); task = nil; updateStatus() }
+        if enabled { startCloudBridge(); start() }
+        else {
+            task?.terminate(); task = nil
+            cloudTask?.terminate(); cloudTask = nil
+            updateStatus()
+        }
     }
     @objc private func updateStatus() {
         toggle.title = enabled ? "暂停透传" : "启用透传"
         item.button?.image = NSImage(systemSymbolName: enabled ? "mic" : "mic.slash", accessibilityDescription: "uu伴侣")
+        guard settings != nil else { status.title = "请设置本机角色"; return }
         guard enabled else { status.title = "已暂停"; return }
+        if cloudPair != nil {
+            let raw = (try? String(contentsOf: cloudLogURL, encoding: .utf8)) ?? ""
+            let events = raw.components(separatedBy: .newlines).suffix(90).filter {
+                $0.contains("paired peer online") || $0.contains("paired peer offline") ||
+                $0.contains("relay disconnected") || $0.contains("relay WSS connected")
+            }
+            let last = events.last ?? ""
+            if last.contains("paired peer online") {
+                status.title = "公网已连接 · 待机"
+            } else if last.contains("relay WSS connected") || last.contains("offline") {
+                status.title = "等待配对设备上线…"
+            } else {
+                status.title = "正在连接发现服务器…"
+            }
+            return
+        }
         guard task?.isRunning == true else { status.title = "连接服务中…"; return }
         let raw = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
         let lines = raw.components(separatedBy: .newlines).suffix(80)
@@ -175,9 +459,14 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         enabled = false
         task?.terminate()
         task = nil
+        cloudTask?.terminate()
+        cloudTask = nil
         NSApp.terminate(nil)
     }
-    func applicationWillTerminate(_ notification: Notification) { task?.terminate() }
+    func applicationWillTerminate(_ notification: Notification) {
+        task?.terminate()
+        cloudTask?.terminate()
+    }
 }
 // Internal E2E harness: run from this already-authorized app's own bundle,
 // record only aggregate sample levels, never audio. Not shown in the menu UI.

@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-SRC="/Users/lixindong/XcodeProjects/UUCompanion/NativeMic/build/UUMicNative.driver"
+SRC="$(cd "$(dirname "$0")" && pwd)/build/UUMicNative.driver"
 DEST="/Library/Audio/Plug-Ins/HAL/UUMicNative.driver"
 [ -f "$SRC/Contents/MacOS/UUMicNative" ] || exit 3
 /usr/bin/codesign --verify --strict "$SRC"

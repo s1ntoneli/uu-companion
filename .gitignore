@@ -22,3 +22,6 @@ NativeMic/pkg-scripts/
 NativeMic/test-pkg-write
 *.dSYM/
 NativeMic/manualpkg-expanded/
+
+.relay-test-code
+**/__pycache__/

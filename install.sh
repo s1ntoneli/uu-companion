@@ -8,28 +8,28 @@ if [[ "$role" == "uninstall" ]]; then
   exit 0
 fi
 if [[ "$role" != "sender" && "$role" != "receiver" ]]; then
-  echo "用法: ./install.sh sender|receiver /path/to/secret [发送端的 IP]"
+  echo "用法: ./install.sh sender|receiver [本地认证密钥文件] [发送端局域网 IP]（密钥可省略，自动生成）"
   exit 2
 fi
 secret_file="$2"
 host="$3"
-if [[ ! -r "$secret_file" ]]; then
-  echo "缺少配对密钥文件"
+if [[ -n "$secret_file" && ! -r "$secret_file" ]]; then
+  echo "指定的本地认证密钥文件不存在"
   exit 2
 fi
 if [[ ! -d "build/uu伴侣.app" ]]; then ./build.sh; fi
 mkdir -p "$HOME/Applications" "$HOME/Library/Application Support/uu伴侣" "$HOME/Library/Logs" backup
 python3 - "$role" "$secret_file" "$host" <<'PY'
-import datetime,json,os,pathlib,subprocess,sys,shutil
+import datetime,json,os,pathlib,subprocess,sys,shutil,secrets
 role,secret_file,host=sys.argv[1:]
-token=pathlib.Path(secret_file).read_text().strip()
-if len(token)<32: raise SystemExit("配对密钥长度不足")
 target=pathlib.Path.home()/"Library/Application Support/uu伴侣/config.json"
 existing={}
 if target.exists():
     existing=json.loads(target.read_text())
     backup=target.with_name("config-before-reinstall-"+datetime.datetime.now().strftime("%Y%m%d%H%M%S")+".json")
     shutil.copy2(target,backup)
+token=pathlib.Path(secret_file).read_text().strip() if secret_file else (existing.get("token") or secrets.token_hex(32))
+if len(token)<32: raise SystemExit("本地密钥长度不足")
 config={"role":role,"token":token,"host":(host or existing.get("host")) if role=="receiver" else None,"port":existing.get("port",50555)}
 if role=="receiver":
     report=subprocess.run(["/usr/sbin/system_profiler","SPAudioDataType"],capture_output=True,text=True,timeout=20).stdout

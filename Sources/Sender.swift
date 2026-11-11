@@ -33,10 +33,12 @@ let serviceType = "_uucompanion._tcp"
 let sharedSecret = ProcessInfo.processInfo.environment["UU_COMPANION_SECRET"] ?? ""
 guard sharedSecret.utf8.count >= 32 else { log("missing pairing secret; refusing to listen"); exit(2) }
 var port: UInt16 = 50555
+var loopbackOnly = false
 var args = CommandLine.arguments.dropFirst().makeIterator()
 while let a = args.next() {
     switch a {
     case "--port": port = UInt16(args.next() ?? "") ?? port
+    case "--loopback-only": loopbackOnly = true
     default:
         print("usage: micbridge-sender [--port N]")
         exit(2)
@@ -51,7 +53,11 @@ func tcpParameters() -> NWParameters {
     tcp.keepaliveIdle = 10
     tcp.keepaliveInterval = 5
     tcp.keepaliveCount = 2
-    return NWParameters(tls: nil, tcp: tcp)
+    let parameters = NWParameters(tls: nil, tcp: tcp)
+    if loopbackOnly {
+        parameters.requiredLocalEndpoint = .hostPort(host: .init("127.0.0.1"), port: .any)
+    }
+    return parameters
 }
 
 final class Sender {
@@ -68,10 +74,17 @@ final class Sender {
 
     func start() throws {
         listener = try NWListener(using: tcpParameters(), on: NWEndpoint.Port(rawValue: port)!)
-        listener.service = NWListener.Service(name: Host.current().localizedName ?? "MacBook", type: serviceType)
+        if !loopbackOnly {
+            listener.service = NWListener.Service(name: Host.current().localizedName ?? "MacBook", type: serviceType)
+        }
         listener.stateUpdateHandler = { state in
             switch state {
-            case .ready: log("listening on port \(port), advertised as \(serviceType)")
+            case .ready:
+                if loopbackOnly {
+                    log("listening on 127.0.0.1:\(port) (cloud bridge only)")
+                } else {
+                    log("listening on port \(port), advertised as \(serviceType)")
+                }
             case .failed(let e): log("listener failed: \(e)"); exit(1)
             default: break
             }
