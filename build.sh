@@ -34,6 +34,14 @@ cp LICENSE "$bundle/Contents/Resources/LICENSE.txt"
 cp LICENSE-MicBridge-MIT.txt "$bundle/Contents/Resources/LICENSE-MicBridge-MIT.txt"
 cp NativeMic/LICENSE-Hush-MIT.txt "$bundle/Contents/Resources/LICENSE-Hush-MIT.txt"
 cp THIRD_PARTY_NOTICES.md "$bundle/Contents/Resources/THIRD_PARTY_NOTICES.md"
+# Bundle our own (MIT-licensed) driver installer so the user never has to
+# manually locate a separate pkg or type an admin shell command.
+# Avoid unnecessarily rebuilding a live macOS audio driver on every UI edit.
+# A clean checkout will generate the local driver installer once.
+if [[ ! -f NativeMic/build/UUMicNative-0.1.2.pkg ]]; then
+    ./NativeMic/package.sh
+fi
+cp NativeMic/build/UUMicNative-0.1.2.pkg "$bundle/Contents/Resources/UUMicNative-0.1.2.pkg"
 # Local builds stay ad-hoc. Set UU_COMPANION_SIGN_IDENTITY to a
 # Developer ID Application certificate for a stable production identity.
 signIdentity="$UU_COMPANION_SIGN_IDENTITY"

@@ -26,10 +26,17 @@ export class RelayRoom {
   async fetch(request) {
     const role = new URL(request.url).searchParams.get("role");
     if (role !== "sender" && role !== "receiver") return json({ error: "invalid_role" }, 400);
-    if (this.ctx.getWebSockets(role).length > 0) return json({ error: "role_in_use" }, 409);
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server, [role]);
     server.serializeAttachment({ role });
+    // A sleeping Mac, crashing client or stale Cloudflare WebSocket can leave
+    // an old role reservation alive for a while. Accept the fresh connection
+    // first, then close all older sockets for that role. This makes pairing
+    // and reconnection self-healing without persistent device accounts.
+    for (const previous of this.ctx.getWebSockets(role)) {
+      if (previous === server) continue;
+      try { previous.close(1000, "replaced_by_reconnect"); } catch {}
+    }
     const other = role === "sender" ? "receiver" : "sender";
     const online = this.ctx.getWebSockets(other).length !== 0;
     server.send(JSON.stringify({ type: "peer", online }));
@@ -57,6 +64,10 @@ export class RelayRoom {
   webSocketError(socket) { this.depart(socket); }
   depart(socket) {
     const role = socket.deserializeAttachment()?.role;
+    if (role !== "sender" && role !== "receiver") return;
+    // If a replacement for the same role is already open, do not falsely
+    // announce that the remote device went offline.
+    if (this.ctx.getWebSockets(role).some(s => s !== socket && s.readyState === 1)) return;
     const other = role === "sender" ? "receiver" : "sender";
     for (const peer of this.ctx.getWebSockets(other)) {
       try { peer.send(JSON.stringify({ type: "peer", online: false })); } catch {}

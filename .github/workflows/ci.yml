@@ -17,10 +17,10 @@ jobs:
         run: ./build.sh
       - name: Validate App signature
         run: codesign --verify --deep --strict build/uu伴侣.app
-      - name: Build Native Mic driver
-        run: ./NativeMic/build.sh
-      - name: Validate Native Mic bundle
-        run: codesign --verify --strict NativeMic/build/UUMicNative.driver
+      - name: Validate bundled Native Mic driver
+        run: |
+          codesign --verify --strict NativeMic/build/UUMicNative.driver
+          test -s build/uu伴侣.app/Contents/Resources/UUMicNative-0.1.2.pkg
       - name: ABI smoke test on Apple Silicon runner
         if: runner.arch == 'ARM64'
         run: |

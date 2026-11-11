@@ -21,7 +21,7 @@ No Node.js installation or user accounts are required for the server. The deploy
 - Plain JSON metadata type peer with Boolean online signals remote peer availability.
 - Binary WebSocket frames contain authenticated ciphertext only; the server forwards them unchanged to the other role.
 - Text ping receives pong. Other plaintext and frames over 64KiB are rejected.
-- Only one sender and receiver per room; no personal login or stored microphone content.
+- The latest connection for each role replaces stale connections, avoiding the 409 conflict after a Mac resumes or restarts; no personal login or stored microphone content.
 
 ## Free quotas
 

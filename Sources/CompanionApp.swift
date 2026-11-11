@@ -26,6 +26,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
     private var codeItem: NSMenuItem!
     private var serverItem: NSMenuItem!
     private var localItem: NSMenuItem!
+    private var driverItem: NSMenuItem!
     private var enabled = true
     private var settings: CompanionSettings?
     private var logURL: URL {
@@ -100,6 +101,29 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             localItem.isHidden = true
         }
     }
+    private var nativeDriverAvailable: Bool {
+        FileManager.default.fileExists(
+            atPath: "/Library/Audio/Plug-Ins/HAL/UUMicNative.driver/Contents/MacOS/UUMicNative")
+    }
+    @objc private func installDriver() {
+        guard let pkg = Bundle.main.url(forResource: "UUMicNative-0.1.2", withExtension: "pkg") else {
+            status.title = "安装包缺失；请从 GitHub 重新下载完整版本"
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "安装 uu伴侣 Native Mic"
+        alert.informativeText = "需要通过 macOS 安装器安装开源虚拟麦克风驱动。系统会要求管理员授权，安装后返回此 App，点击启用透传即可。"
+        alert.addButton(withTitle: "打开系统安装器")
+        alert.addButton(withTitle: "取消")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if NSWorkspace.shared.open(pkg) {
+            status.title = "请在系统安装器中批准安装 Native Mic"
+        } else {
+            status.title = "无法打开安装器"
+        }
+    }
+
     @objc private func selectRole() {
         let alert = NSAlert()
         alert.messageText = "这台 Mac 要做什么？"
@@ -117,8 +141,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             return
         }
         let token = settings?.token ?? random.map { String(format: "%02x", $0) }.joined()
-        let nativeAvailable = FileManager.default.fileExists(
-            atPath: "/Library/Audio/Plug-Ins/HAL/UUMicNative.driver/Contents/MacOS/UUMicNative")
+        let nativeAvailable = nativeDriverAvailable
         let preferred = role == "receiver" ?
             (nativeAvailable ? "uu伴侣 Native Mic" : "uu伴侣 Mic") : nil
         let newSettings = CompanionSettings(role: role, host: settings?.host,
@@ -139,7 +162,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         // grant microphone access to a previously connected device.
         if settings?.role != role { try? FileManager.default.removeItem(at: relayURL) }
         settings = nil
-        enabled = true
+        enabled = role != "receiver" || nativeAvailable
         toggle.isEnabled = true
         loadSettings()
         loadCloudPair()
@@ -147,7 +170,8 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         updatePairingMenu()
         restartForPairing()
         if role == "receiver" && !nativeAvailable {
-            status.title = "请先安装 uu伴侣 Native Mic 驱动"
+            status.title = "请先安装 Native Mic 驱动"
+            installDriver()
         }
     }
 
@@ -281,6 +305,10 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
                                 action: #selector(selectRole), keyEquivalent: "")
         select.target = self
         menu.addItem(select)
+        driverItem = NSMenuItem(title: "安装 / 修复 Native Mic 驱动…",
+                                action: #selector(installDriver), keyEquivalent: "")
+        driverItem.target = self
+        menu.addItem(driverItem)
         menu.addItem(.separator())
         toggle.target = self
         menu.addItem(toggle)
@@ -347,6 +375,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             mode.title = "接收端 · \(parsed.virtualDeviceName ?? "默认设备")"
         }
         mode.isEnabled = false
+        driverItem?.isHidden = parsed.role != "receiver"
     }
     private func start() {
         guard enabled, task == nil, let settings else { return }
@@ -412,7 +441,12 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
     @objc private func updateStatus() {
         toggle.title = enabled ? "暂停透传" : "启用透传"
         item.button?.image = NSImage(systemSymbolName: enabled ? "mic" : "mic.slash", accessibilityDescription: "uu伴侣")
-        guard settings != nil else { status.title = "请设置本机角色"; return }
+        guard let settings else { status.title = "请设置本机角色"; return }
+        if settings.role == "receiver" && !nativeDriverAvailable &&
+           settings.virtualDeviceName?.contains("Native") == true {
+            status.title = "需要安装 Native Mic 驱动"
+            return
+        }
         guard enabled else { status.title = "已暂停"; return }
         if cloudPair != nil {
             let raw = (try? String(contentsOf: cloudLogURL, encoding: .utf8)) ?? ""
@@ -437,7 +471,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             status.title = "请在系统设置中授权麦克风"
             return
         }
-        if let settings, settings.role == "sender" {
+        if settings.role == "sender" {
             let events = lines.filter { $0.contains("microphone ON") || $0.contains("microphone OFF") }
             status.title = events.last?.contains("microphone ON") == true ? "正在向远程电脑送音" : "待机，等待远端使用麦克风"
         } else {

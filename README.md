@@ -15,9 +15,9 @@ Free and open-source accountless microphone sharing between Macs.
 
 ## 用户怎么配对
 
-1. 在两台 Mac 安装、启动同一个 uu伴侣 App。发送端允许麦克风权限；接收端安装 Native Mic 驱动。
-2. 提供麦克风的 Mac：菜单栏 uu伴侣 → 生成新配对码…。16 位随机码自动复制到剪贴板。
-3. 接收麦克风的 Mac：菜单栏 uu伴侣 → 输入配对码…，粘贴并确认。
+1. 在两台 Mac 启动同一个 uu伴侣 App。首次启动自动选择「提供本机麦克风」或「使用远程麦克风」，无须先用终端写配置。
+2. 提供麦克风的 Mac：允许 macOS 麦克风权限，菜单栏 → 生成新配对码…。16 位随机码自动复制到剪贴板。
+3. 接收麦克风的 Mac：如果缺少 Native Mic，菜单栏 → 安装 / 修复 Native Mic 驱动…，系统安装器要求管理员确认；安装完成后重新打开 uu伴侣并点击启用透传。随后菜单栏 → 输入配对码…，粘贴并确认。
 4. 两端显示公网已连接后，打开 ChatGPT 或其他软件，选择 uu伴侣 Native Mic，直接说话。
 5. 配对后不必重复输入。想撤销配对，发送端重新生成配对码，或两端切回局域网直连。
 
@@ -46,9 +46,11 @@ Free and open-source accountless microphone sharing between Macs.
 
 首先编译：./build.sh
 
-接收端安装虚拟麦克风：运行 NativeMic/package.sh 生成本机测试安装包，然后使用 macOS Installer 安装 NativeMic/build/UUMicNative-0.1.2.pkg，正常确认管理员权限。驱动源码及注意事项见 NativeMic/README.md。
+接收端安装虚拟麦克风：正常构建的 App 已经内置 Native Mic 0.1.2 驱动测试安装包，在菜单栏点击「安装 / 修复 Native Mic 驱动…」即可通过系统安装器完成管理员确认。开发者也可运行 NativeMic/package.sh 单独生成驱动包。驱动源码及注意事项见 NativeMic/README.md。
 
-首次安装仍需一份用于本机 Legacy TCP 鉴权的随机密钥文件，安全方式生成：
+**普通用户无需输入命令行或提供任何旧配对密钥。** App 首次启动会自动生成本机私有的 TCP 认证密钥。开发者如需手动安装、局域网调试，可以使用 install.sh。
+
+开发者也可自行生成 Legacy TCP 的随机密钥文件：
     openssl rand -hex 32 > .pairing-secret
 
 本地发送端：
@@ -57,7 +59,7 @@ Free and open-source accountless microphone sharing between Macs.
 本地接收端：
     ./install.sh receiver .pairing-secret 发送端局域网IP
 
-在跨公网 Anywhere 模式下，两台 Mac 的这个 Legacy TCP 密钥**不必相同**，因为各自只用于本机 Bridge ↔ 本机音频服务的认证。公网两端的加密与发现使用独立的配对码。不要把密钥或配对码提交到 GitHub。
+上述 install.sh 命令中的密钥文件是可选参数；省略时会自动生成或保留已有本机密钥。跨公网 Anywhere 模式下，两台 Mac 的 Legacy TCP 密钥**不必相同**，因为各自只用于本机 Bridge ↔ 本机音频服务的认证。公网两端的加密与发现使用独立的配对码。不要把密钥或配对码提交到 GitHub。
 
 首次打开 App 应遵守 macOS 提示完成麦克风、本地网络与登录项授权。接收端默认输入设备可以设置为 uu伴侣 Native Mic；默认播放输出仍为扬声器。
 
