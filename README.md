@@ -65,9 +65,11 @@ Free and open-source accountless microphone sharing between Macs.
 
 ## 公共服务器与自部署
 
-免费公开中继：wss://uu-companion-relay.auv1107.workers.dev
+免费公开中继（Cloudflare 代理的自有域名）：wss://uu.gokoding.com
 
-健康检查：https://uu-companion-relay.auv1107.workers.dev/health
+健康检查：https://uu.gokoding.com/health
+
+旧版中继地址 `wss://uu-companion-relay.auv1107.workers.dev` 继续保留，已配对的旧版客户端无需立即迁移。更换中继服务器时，配对双方必须使用相同地址。
 
 服务器代码：Relay/worker.mjs（MIT）。使用自己的 Cloudflare 免费账户可运行：
     CLOUDFLARE_ACCOUNT_ID=... CLOUDFLARE_API_TOKEN=... python3 Relay/deploy.py

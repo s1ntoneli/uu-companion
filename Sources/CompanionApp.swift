@@ -56,7 +56,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/uu-companion-cloud.log")
     }
-    private let officialRelay = "wss://uu-companion-relay.auv1107.workers.dev"
+    private let officialRelay = "wss://uu.gokoding.com"
     private let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 
     private func loadCloudPair() {

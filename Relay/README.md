@@ -1,6 +1,7 @@
 # uu Relay — open-source free rendezvous & encrypted media forwarding
 
-Public endpoint: https://uu-companion-relay.auv1107.workers.dev/health
+Public endpoint: https://uu.gokoding.com/health (Cloudflare-proxied custom domain).
+Legacy endpoint: https://uu-companion-relay.auv1107.workers.dev/health remains supported for existing clients.
 
 This Cloudflare Worker + Durable Object allows an accountless sender and receiver to establish outbound WebSockets. It relays only opaque encrypted frames (ChaChaPoly encrypted on client devices), never plaintext audio. One WebSocket per role per room, no persistent room database, hibernating sockets at idle.
 
