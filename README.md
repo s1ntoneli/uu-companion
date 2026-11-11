@@ -1,8 +1,10 @@
 # uu伴侣 (UU Companion)
 
-Free and open-source accountless microphone sharing between Macs.
+**让你 UU 远程的设备使用你本地的麦克风。**
 
-**中文**：让另一台 Mac 的实体麦克风，像本机麦克风一样被 ChatGPT、会议软件和任意录音应用使用。完全免费，MIT 开源，不要求账号或订阅。
+Use your local microphone on the Mac you're controlling through UU Remote.
+
+免费、MIT 开源，无需账号或订阅。通过标准虚拟麦克风，可直接在远程设备上的 ChatGPT、会议软件及录音应用中使用。
 
 ## 主要功能
 
