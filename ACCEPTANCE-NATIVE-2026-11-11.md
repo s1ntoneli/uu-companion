@@ -10,3 +10,10 @@
 6. 日常连接保持，MagicBook 待机不持续收音。旧 Loopback/BlackHole 仍在系统仅供回退。
 
 未验收：ChatGPT 客户端使用新 Native Mic 的文本转录、macOS 整机重启登录自启、公开安装包签名/公证、长时间音质和安全加密。
+
+## 应用重启与重连验收
+- Mini 自有驱动菜单栏程序在 10:38、10:45 多次重启成功，并自动恢复 Native Mic 默认输入、Mini 扬声器默认输出和认证连接。
+- macOS 登录项状态 SMAppService.Status.enabled (rawValue 1)，已注册；尚未整机重启测试。
+- 发送端断线后接收端退出连接、限频重试；MagicBook 10:46:33 恢复监听，Mini 10:46:34 自动重连并完成认证。
+- 配对设置、Native Mic 选择、Loopback 回退均通过隔离 HOME 的模拟重装/切换测试，不打印配对密钥。
+- 注意：每次重新用 ad-hoc 签名构建主 App 后，独立 self-test 的麦克风 TCC 可能重新要求授权；当前真正的 ChatGPT 录音权限与该测试模式不同。正式发布需稳定的 Developer ID Application 签名、公证。

@@ -51,3 +51,7 @@ Native Mic 源码、MIT 许可和开发安装工具见 NativeMic/README.md。
 
 - MicBridge（iecht / MIT）：采集、监听、基础协议与 HAL 输出相关原始代码；根目录 LICENSE 保留其 MIT 许可。
 - Hush（Tim Schmolka / MIT）：Native Mic 虚拟输入 HAL 结构；其 MIT 许可在 NativeMic/LICENSE-Hush-MIT.txt 和驱动资源中附带。
+
+## 开发者构建签名
+
+默认本地调试使用 ad-hoc 签名。需要稳定正式应用身份时，可通过环境变量 UU_COMPANION_SIGN_IDENTITY 指定 Developer ID Application 证书给 ./build.sh 使用；NativeMic/build.sh 相应支持 UU_DRIVER_SIGN_IDENTITY。仅签名应用和驱动不足以公开分发：驱动的安装 PKG 还需要 Developer ID Installer 证书、公证及升级路径验收。

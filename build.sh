@@ -30,5 +30,13 @@ swiftc -O -swift-version 5 -target arm64-apple-macos14.2 Sources/Sender.swift -o
 swiftc -O -swift-version 5 -target arm64-apple-macos14.2 Sources/Receiver.swift -o "$bundle/Contents/MacOS/uu-receiver"
 swiftc -O -swift-version 5 -target arm64-apple-macos14.2 Sources/CompanionApp.swift -o "$bundle/Contents/MacOS/uu-companion"
 cp LICENSE "$bundle/Contents/Resources/THIRD_PARTY_LICENSE.txt"
-codesign --force --deep --sign - "$bundle"
+# Local builds stay ad-hoc. Set UU_COMPANION_SIGN_IDENTITY to a
+# Developer ID Application certificate for a stable production identity.
+signIdentity="$UU_COMPANION_SIGN_IDENTITY"
+if [[ -z "$signIdentity" || "$signIdentity" == "-" ]]; then
+    codesign --force --deep --sign - "$bundle"
+else
+    codesign --force --deep --options runtime --timestamp --sign "$signIdentity" "$bundle"
+fi
+codesign --verify --deep --strict "$bundle"
 echo "Built: $bundle"
