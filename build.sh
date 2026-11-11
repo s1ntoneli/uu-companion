@@ -19,7 +19,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <key>CFBundleExecutable</key><string>uu-companion</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.2.0</string>
-<key>CFBundleVersion</key><string>6</string>
+<key>CFBundleVersion</key><string>7</string>
 <key>LSMinimumSystemVersion</key><string>14.2</string>
 <key>LSUIElement</key><true/>
 <key>NSMicrophoneUsageDescription</key><string>uu伴侣在远程 Mac 开始录音时使用本机麦克风，并将声音传送到配对的 Mac。</string>
@@ -29,7 +29,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 PLIST
 swiftc -O -swift-version 5 -target arm64-apple-macos14.2 Sources/Sender.swift -o "$bundle/Contents/MacOS/uu-sender"
 swiftc -O -swift-version 5 -target arm64-apple-macos14.2 Sources/Receiver.swift -o "$bundle/Contents/MacOS/uu-receiver"
-swiftc -O -swift-version 5 -target arm64-apple-macos14.2 Sources/CompanionApp.swift -o "$bundle/Contents/MacOS/uu-companion"
+swiftc -O -swift-version 5 -target arm64-apple-macos14.2 Sources/CompanionApp.swift Sources/MicrophoneTest.swift Sources/main.swift -o "$bundle/Contents/MacOS/uu-companion"
 swiftc -O -swift-version 5 -target arm64-apple-macos14.2 Sources/CloudBridge.swift -o "$bundle/Contents/MacOS/uu-cloud-bridge"
 cp LICENSE "$bundle/Contents/Resources/LICENSE.txt"
 cp LICENSE-MicBridge-MIT.txt "$bundle/Contents/Resources/LICENSE-MicBridge-MIT.txt"

@@ -25,6 +25,9 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
     private var nextAction = ""
     private var audioPort: UInt16 = UInt16.random(in: 52000...62000)
     private var restartGeneration = 0
+    private let liveTest = LiveMicTest()
+    private var awaitingFirstTest = false
+    private var reloadingAudio = false
     private var toggle = NSMenuItem(title: "暂停", action: #selector(toggleTransfer), keyEquivalent: "")
     private var task: Process?
     private var cloudTask: Process?
@@ -90,6 +93,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             error: info["error"] as? String ?? ""
         )
     }
+    private var legacyLANEnabled: Bool { UserDefaults.standard.bool(forKey: "uuLegacyLANEnabled") }
     private let officialRelay = "wss://uu.gokoding.com"
     private let oldOfficialRelay = "wss://uu-companion-relay.auv1107.workers.dev"
     private let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
@@ -133,6 +137,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
                 try data.write(to: relayURL, options: [.atomic])
                 chmod(relayURL.path, 0o600)
                 cloudPair = pair
+                UserDefaults.standard.set(false, forKey: "uuLegacyLANEnabled")
             } catch {
                 status.title = "配对信息保存失败"
                 return
@@ -162,6 +167,9 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         FileManager.default.fileExists(
             atPath: "/Library/Audio/Plug-Ins/HAL/UUMicNative.driver/Contents/MacOS/UUMicNative")
     }
+    private var nativeInputVisible: Bool {
+        NativeMicAudioSupport.deviceID() != nil
+    }
     private var currentBootEpoch: Double {
         var boot = timeval()
         var size = MemoryLayout<timeval>.size
@@ -170,16 +178,10 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         }
         return Date().timeIntervalSince1970 - ProcessInfo.processInfo.systemUptime
     }
+    // A disk-only check is insufficient. The device can be available after
+    // just a coreaudiod reload; conversely it might be absent after a reboot.
     private var driverRestartPending: Bool {
-        let installedDuringBoot = UserDefaults.standard.double(forKey: driverRestartKey)
-        guard installedDuringBoot > 0 else { return false }
-        // Compare boot identities, not uptime. A login after reboot may take
-        // longer than the previous session had been running.
-        if abs(installedDuringBoot - currentBootEpoch) >= 2 {
-            UserDefaults.standard.removeObject(forKey: driverRestartKey)
-            return false
-        }
-        return true
+        nativeDriverAvailable && !nativeInputVisible
     }
     private func quoteShell(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
@@ -195,13 +197,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             return
         }
         if nativeDriverAvailable && driverRestartPending {
-            status.title = "安装成功 · 重启此 Mac 后启用 Native Mic"
-            let alert = NSAlert()
-            alert.messageText = "Native Mic 已安装"
-            alert.informativeText = "需要重新启动这台 Mac，让系统音频服务加载驱动。请保存工作后正常重启。"
-            alert.addButton(withTitle: "知道了")
-            NSApp.activate(ignoringOtherApps: true)
-            alert.runModal()
+            reloadAudioService()
             return
         }
         let driver = Bundle.main.resourceURL?.appendingPathComponent("UUMicNative.driver", isDirectory: true)
@@ -223,7 +219,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
 
         let alert = NSAlert()
         alert.messageText = nativeDriverAvailable ? "修复 Native Mic" : "安装 Native Mic"
-        alert.informativeText = "uu伴侣会将内置的已签名虚拟麦克风安装到 macOS 系统音频目录。系统将要求管理员授权。安装后需要重启这台 Mac；不会关闭系统安全保护或影响其他音频插件。"
+        alert.informativeText = "uu伴侣会安装已签名的虚拟麦克风，macOS 将请求管理员授权。安装后会尝试重新加载系统音频服务，可能短暂中断正在播放或录制的声音。若加载失败，再提示你重启 Mac。不会关闭 SIP 或系统安全保护。"
         alert.addButton(withTitle: "安装")
         alert.addButton(withTitle: "取消")
         NSApp.activate(ignoringOtherApps: true)
@@ -248,7 +244,10 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             "if [ -e " + quoteShell(destination) + " ]; then /bin/mv " +
                 quoteShell(destination) + " " + quoteShell(backup) + "; fi",
             "/bin/mv " + quoteShell(staging) + " " + quoteShell(destination),
-            "/usr/bin/codesign --verify --strict " + quoteShell(destination)
+            "/usr/bin/codesign --verify --strict " + quoteShell(destination),
+            // The old test PKG used exactly this CoreAudio reload operation.
+            // It is inside the admin-authorized step and the user was warned.
+            "/bin/sh -c '/usr/bin/killall coreaudiod >/dev/null 2>&1 || true'"
         ].joined(separator: " && ")
         // The privileged action uses the normal macOS administrator dialog.
         // No password is read, logged, stored, or transmitted by uu伴侣.
@@ -273,19 +272,12 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
                 if finished.terminationStatus == 0 && self.nativeDriverAvailable {
                     UserDefaults.standard.set(self.currentBootEpoch,
                                               forKey: self.driverRestartKey)
-                    self.status.title = "Native Mic 已安装 · 请重启这台 Mac"
-                    self.enabled = false
-                    self.task?.terminate()
-                    self.task = nil
-                    self.cloudTask?.terminate()
-                    self.cloudTask = nil
-                    self.appendLoginDiagnostic("Native Mic installation succeeded; reboot required")
-                    let complete = NSAlert()
-                    complete.messageText = "Native Mic 安装成功"
-                    complete.informativeText = "驱动已安装。请保存工作并正常重启这台 Mac。重新打开 uu伴侣后即可配对使用远程麦克风。"
-                    complete.addButton(withTitle: "知道了")
-                    NSApp.activate(ignoringOtherApps: true)
-                    complete.runModal()
+                    self.enabled = true
+                    self.task?.terminate(); self.task = nil
+                    self.cloudTask?.terminate(); self.cloudTask = nil
+                    self.appendLoginDiagnostic("Native Mic installation succeeded; checking Core Audio")
+                    self.status.title = "驱动已安装，正在检测系统是否识别…"
+                    self.pollForNativeMic(attempt: 0)
                 } else {
                     let cancelled = details.contains("User canceled") || details.contains("-128")
                     self.status.title = cancelled ? "已取消驱动安装" : "驱动安装失败"
@@ -308,6 +300,186 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             driverInstallationInProgress = false
             driverItem.isEnabled = true
             status.title = "无法启动系统安装授权：\(error.localizedDescription)"
+        }
+    }
+
+    // Continue the actual first-run journey without assuming a reboot is
+    // necessary. The HAL device list, not file presence or a boot marker,
+    // determines when the receiver can proceed.
+    private func pollForNativeMic(attempt: Int) {
+        guard settings?.role == "receiver" else { return }
+        if nativeInputVisible {
+            UserDefaults.standard.removeObject(forKey: driverRestartKey)
+            enabled = true
+            restartForPairing()
+            let ready = NSAlert()
+            ready.messageText = "Native Mic 已可以使用"
+            ready.informativeText =
+                "macOS 已识别虚拟麦克风，无需重启整台 Mac。接下来连接提供麦克风的另一台 Mac。"
+            ready.addButton(withTitle: cloudPair == nil ? "输入配对码" : "继续")
+            NSApp.activate(ignoringOtherApps: true)
+            ready.runModal()
+            suggestPairingInput()
+            return
+        }
+        if attempt < 12 {
+            status.title = "等待 macOS 加载 Native Mic…"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.pollForNativeMic(attempt: attempt + 1)
+            }
+            return
+        }
+        let warning = NSAlert()
+        warning.messageText = "驱动已安装，但尚未显示在音频设备中"
+        warning.informativeText =
+            "可以先输入配对码，稍后重新加载 macOS 音频服务。若仍无法识别，才需要重启 Mac。\n\n重新加载音频服务可能短暂中断其他应用的播放或录音。"
+        warning.addButton(withTitle: "输入配对码")
+        warning.addButton(withTitle: "重新加载音频服务")
+        warning.addButton(withTitle: "稍后")
+        NSApp.activate(ignoringOtherApps: true)
+        let choice = warning.runModal()
+        if choice == .alertFirstButtonReturn {
+            suggestPairingInput()
+        } else if choice == .alertSecondButtonReturn {
+            reloadAudioService()
+        }
+    }
+
+    private func suggestPairingInput() {
+        guard settings?.role == "receiver", cloudPair == nil else { return }
+        // Let the administrator dialog finish before presenting the next step.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self, self.settings?.role == "receiver", self.cloudPair == nil else {
+                return
+            }
+            self.enterCode()
+        }
+    }
+
+    @objc private func reloadAudioService() {
+        guard !reloadingAudio else { return }
+        if nativeInputVisible {
+            UserDefaults.standard.removeObject(forKey: driverRestartKey)
+            restartForPairing()
+            suggestPairingInput()
+            return
+        }
+        let warning = NSAlert()
+        warning.messageText = "重新加载 macOS 音频服务？"
+        warning.informativeText =
+            "这会短暂中断其他 App 的播放、会议和录音。请先保存正在录制的内容。uu伴侣会正常申请管理员权限，不会修改其他音频驱动。"
+        warning.addButton(withTitle: "重新加载")
+        warning.addButton(withTitle: "取消")
+        NSApp.activate(ignoringOtherApps: true)
+        guard warning.runModal() == .alertFirstButtonReturn else { return }
+        reloadingAudio = true
+        status.title = "正在重新加载系统音频…"
+        let command = "do shell script " +
+            quoteAppleScript("/usr/bin/killall coreaudiod") +
+            " with administrator privileges"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", command]
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
+        process.standardOutput = Pipe()
+        process.terminationHandler = { [weak self] done in
+            let details = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(),
+                                 encoding: .utf8) ?? ""
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.reloadingAudio = false
+                if done.terminationStatus == 0 {
+                    self.pollForNativeMic(attempt: 0)
+                } else {
+                    let alert = NSAlert()
+                    alert.messageText = "系统音频服务未能重新加载"
+                    alert.informativeText =
+                        "你仍可先配对；如果 macOS 一直无法识别 Native Mic，正常重启这台 Mac 后再试。\n\n" +
+                        String(details.suffix(180))
+                    alert.addButton(withTitle: "输入配对码")
+                    alert.addButton(withTitle: "知道了")
+                    NSApp.activate(ignoringOtherApps: true)
+                    if alert.runModal() == .alertFirstButtonReturn {
+                        self.suggestPairingInput()
+                    }
+                }
+            }
+        }
+        do {
+            try process.run()
+        } catch {
+            reloadingAudio = false
+            status.title = "音频服务重新加载失败：\(error.localizedDescription)"
+        }
+    }
+
+    @objc private func showLiveTest() {
+        liveTest.present { [weak self] in
+            guard let self, let settings = self.settings else {
+                return "请先在 uu伴侣选择这台 Mac 的用途。"
+            }
+            guard settings.role == "receiver" else {
+                return "请到使用远程麦克风的那台 Mac 上，点击「现场试音」。"
+            }
+            guard self.nativeDriverAvailable else {
+                return "这台 Mac 尚未安装 Native Mic，请先完成安装。"
+            }
+            guard self.nativeInputVisible else {
+                return "macOS 尚未加载 Native Mic。请先重新加载系统音频服务；仍不行再重启 Mac。"
+            }
+            guard self.cloudPair != nil else {
+                return "还没有配对。请先从另一台 Mac 复制并输入 16 位配对码。"
+            }
+            guard let snapshot = self.activeBridgeState(),
+                  snapshot.relayOnline, snapshot.peerOnline else {
+                return "另一台 Mac 尚未在线。请在提供麦克风的 Mac 上打开 uu伴侣，并检查连接状态。"
+            }
+            guard snapshot.localConnected, self.task?.isRunning == true else {
+                return "本机音频链路还没有就绪，稍后再试或选择「重新连接」。"
+            }
+            return nil
+        }
+    }
+
+    // The sender's physical mic permission precedes the pairing-code dialog:
+    // don't bury the macOS TCC consent prompt behind another modal alert.
+    private func prepareSenderFirstRun() {
+        guard settings?.role == "sender", cloudPair == nil else { return }
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .notDetermined:
+            status.title = "下一步：授权这台 Mac 的实体麦克风"
+            microphonePermissionInFlight = true
+            NSApp.activate(ignoringOtherApps: true)
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] allowed in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.microphonePermissionInFlight = false
+                    if !allowed {
+                        self.status.title = "麦克风未授权 · 可在系统设置中允许"
+                    }
+                    self.generateCode()
+                }
+            }
+        case .denied, .restricted:
+            status.title = "请先允许麦克风权限"
+            let notice = NSAlert()
+            notice.messageText = "这台 Mac 尚未允许麦克风"
+            notice.informativeText =
+                "uu伴侣需要读取本机麦克风，才能把声音送到另一台 Mac。系统拒绝后，需要在系统设置 → 隐私与安全性 → 麦克风中开启。"
+            notice.addButton(withTitle: "打开麦克风设置")
+            notice.addButton(withTitle: "先生成配对码")
+            NSApp.activate(ignoringOtherApps: true)
+            if notice.runModal() == .alertFirstButtonReturn,
+               let link = URL(string:
+                   "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                NSWorkspace.shared.open(link)
+            }
+            generateCode()
+        case .authorized:
+            generateCode()
+        @unknown default:
+            generateCode()
         }
     }
 
@@ -355,13 +527,20 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         pairItem.action = role == "receiver" ? #selector(enterCode) : #selector(generateCode)
         updatePairingMenu()
         if role == "sender" && cloudPair == nil {
-            generateCode()
+            prepareSenderFirstRun()
         } else {
             restartForPairing()
         }
-        if role == "receiver" && !nativeAvailable {
-            status.title = "请先安装 Native Mic 驱动"
-            installDriver()
+        if role == "receiver" {
+            if !nativeAvailable {
+                status.title = "请先安装 Native Mic 驱动"
+                installDriver()
+            } else if driverRestartPending {
+                status.title = "Native Mic 尚未加载 · 可尝试重新加载音频"
+                reloadAudioService()
+            } else {
+                suggestPairingInput()
+            }
         }
     }
 
@@ -423,7 +602,8 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         let server = cloudPair?.server ??
             UserDefaults.standard.string(forKey: "uuRelayURL") ?? officialRelay
         persistCloudPair(CloudPair(code: input, server: server))
-        status.title = "正在通过公网连接配对设备…"
+        awaitingFirstTest = true
+        status.title = "正在连接另一台 Mac · 连接后会引导你试音"
     }
     @objc private func copyCode() {
         guard let code = cloudPair?.code else { return }
@@ -455,6 +635,7 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         } else { status.title = "服务器已保存，生成或输入配对码后生效" }
     }
     @objc private func useLocalNetwork() {
+        UserDefaults.standard.set(true, forKey: "uuLegacyLANEnabled")
         persistCloudPair(nil)
         status.title = "已切回局域网直连"
     }
@@ -567,6 +748,9 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
                                 action: #selector(installDriver), keyEquivalent: "")
         driverItem.target = self
         menu.addItem(driverItem)
+        let test = NSMenuItem(title: "现场试音…", action: #selector(showLiveTest), keyEquivalent: "")
+        test.target = self
+        menu.addItem(test)
         let help = NSMenuItem(title: "如何连接两台 Mac…", action: #selector(showGuide), keyEquivalent: "")
         help.target = self
         menu.addItem(help)
@@ -598,6 +782,11 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         updatePairingMenu()
         if settings == nil {
             DispatchQueue.main.async { [weak self] in self?.selectRole() }
+        } else if settings?.role == "receiver" && cloudPair == nil &&
+                  nativeDriverAvailable && nativeInputVisible {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.suggestPairingInput()
+            }
         } else if CommandLine.arguments.contains("--acceptance-install-driver") &&
                   settings?.role == "receiver" {
             // Internal E2E hook: exercise the exact menu's installer function,
@@ -645,6 +834,11 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
     }
     private func start() {
         guard enabled, task == nil, let settings else { return }
+        // Do not start Bonjour LAN discovery before first-time public pairing.
+        if settings.role == "receiver" && cloudPair == nil && !legacyLANEnabled {
+            status.title = "Native Mic 就绪 · 等待配对码"
+            return
+        }
         if settings.role == "receiver", (!nativeDriverAvailable || driverRestartPending) {
             status.title = driverRestartPending ? "请重启 Mac 以启用 Native Mic" : "需要安装 Native Mic"
             return
@@ -756,6 +950,8 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         case "install": installDriver()
         case "enable": toggleTransfer()
         case "retry": retryConnection()
+        case "test": showLiveTest()
+        case "reload": reloadAudioService()
         case "permission":
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
                 NSWorkspace.shared.open(url)
@@ -820,14 +1016,16 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
         let peerReady = bridge?.peerOnline == true
         let localLink = bridge?.localConnected == true
 
-        if receiving && !nativeDriverAvailable {
+        if driverInstallationInProgress {
+            localStage.title = "○ 正在安装 Native Mic"
+        } else if receiving && !nativeDriverAvailable {
             localStage.title = "✕ 尚未安装 Native Mic"
         } else if receiving && driverRestartPending {
-            localStage.title = "! Native Mic 已安装 · 需要重启"
+            localStage.title = "! Native Mic 已安装 · 系统尚未识别"
         } else if !receiving && !authorized {
             localStage.title = "✕ 尚未允许本机麦克风"
-        } else if driverInstallationInProgress {
-            localStage.title = "○ 正在安装驱动"
+        } else if receiving && cloudPair == nil && !legacyLANEnabled {
+            localStage.title = "✓ Native Mic 已识别 · 等待配对"
         } else {
             localStage.title = audioReady ? "✓ 本机音频已就绪" :
                 (audioRunning ? "○ 本机音频启动中" : "✕ 本机音频服务未运行")
@@ -877,21 +1075,21 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             status.title = "请先安装 Native Mic 驱动"
             recommend("安装 Native Mic…", action: "install")
         } else if receiving && driverRestartPending {
-            status.title = "驱动安装完成 · 请重启这台 Mac"
-            recommend("为什么需要重启…", action: "guide")
+            status.title = "Native Mic 尚未被 macOS 加载"
+            recommend("重新加载音频服务…", action: "reload")
         } else if !enabled {
             status.title = "已暂停"
             recommend("启用透传", action: "enable")
         } else if !receiving && !authorized {
             status.title = "还未授权麦克风"
             recommend("打开麦克风权限…", action: "permission")
-        } else if !audioReady {
-            status.title = audioRunning ? "本机音频启动中…" : "本机音频服务未运行"
-            recommend("重新连接…", action: "retry")
-        } else if cloudPair == nil {
+        } else if cloudPair == nil && !legacyLANEnabled {
             status.title = "等待配对"
             recommend(receiving ? "输入配对码…" : "生成配对码…",
                       action: receiving ? "enter" : "generate")
+        } else if !audioReady {
+            status.title = audioRunning ? "本机音频启动中…" : "本机音频服务未运行"
+            recommend("重新连接…", action: "retry")
         } else if !relayReady {
             status.title = "连接中继服务器中…"
             recommend("重新连接…", action: "retry")
@@ -906,10 +1104,18 @@ final class CompanionDelegate: NSObject, NSApplicationDelegate {
             recommend("重新连接音频服务…", action: "retry")
         } else if streaming {
             status.title = "正在传输声音"
-            recommend("如何使用…", action: "guide")
+            recommend("现场试音…", action: "test")
         } else {
             status.title = "两台 Mac 已连接 · 等待录音"
-            recommend("如何开始语音输入…", action: "guide")
+            recommend(receiving ? "现场试音…" : "如何开始语音输入…",
+                      action: receiving ? "test" : "guide")
+        }
+
+        if receiving && awaitingFirstTest && audioReady && peerReady && localLink {
+            awaitingFirstTest = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                self?.showLiveTest()
+            }
         }
     }
     @objc private func openLogs() { NSWorkspace.shared.open(logURL) }
@@ -995,14 +1201,4 @@ final class RecordingSelfTest: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
         }
     }
-}
-let application = NSApplication.shared
-if CommandLine.arguments.contains("--self-test") {
-    let testDelegate = RecordingSelfTest()
-    application.delegate = testDelegate
-    application.run()
-} else {
-    let delegate = CompanionDelegate()
-    application.delegate = delegate
-    application.run()
 }
