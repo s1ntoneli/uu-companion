@@ -475,8 +475,10 @@ final class Receiver {
     // Air's microphone to switch on, not for discovery, TCP setup and audio engine start.
     private func connect() {
         guard let ep = senderEndpoint else { return }
-        // Retry every 2 s at first, backing off to every 30 s while the sender stays unreachable.
-        let delay = min(30, 2 * pow(2, Double(min(failures, 4))))
+        // Retry at 2 s initially and cap backoff at 10 s. The previous 30 s
+        // maximum made re-opening the MacBook app feel disconnected for too long.
+        // We still keep bounded retries rather than spin while the sender is offline.
+        let delay = min(10, 2 * pow(2, Double(min(failures, 3))))
         if let t = lastAttempt, Date().timeIntervalSince(t) < delay { return }
         lastAttempt = Date()
         let tcp = NWProtocolTCP.Options()
