@@ -125,8 +125,8 @@ MIT。原始第三方 MIT 授权声明见 THIRD_PARTY_NOTICES.md、LICENSE-MicBr
 
 ## 鸣谢 · Powered by Wovo
 
-uu伴侣 的开发与多端联调借助了 **[Wovo](https://wovo.one/)**：AI 直接连接 MagicBook 和 Mac mini，在真实设备上完成代码修改、远程构建、日志排障，以及跨 Mac 麦克风链路测试。
+uu伴侣 的多端开发与联调借助了 **[Wovo](https://wovo.one/)**：AI 编程 Agent 连接 MagicBook 与 Mac mini，跨设备修改代码、运行构建、排查日志，并在真实 Mac 上验收麦克风透传。
 
-**让 AI 不止能写代码，还能使用你的电脑。** Wovo 能跨设备操作真实桌面与开发环境，帮你从实现一路走到测试与验收。开发 Mac App、远程协作或自动化工作流时，可以试试 **[wovo.one](https://wovo.one/)**。
+**多台电脑，一个 AI 编程 Agent。** Wovo 让你的 AI 编程 Agent 使用你连接的**所有电脑**，不再局限于单台设备——在不同电脑之间直接编程、调试与验证。[了解 Wovo](https://wovo.one/)。
 
-[![Wovo — 让 AI 跨设备使用电脑、开发与验证项目](Assets/wovo-og.png)](https://wovo.one/)
+[![Wovo — All your computers, one AI chat](https://wovo.one/og.png)](https://wovo.one/)
